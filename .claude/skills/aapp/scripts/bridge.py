@@ -68,7 +68,12 @@ def default_state_path():
     base = os.environ.get("AAPP_HOME") or os.path.join(
         os.environ.get("TMPDIR", "/tmp"), "aapp"
     )
-    return os.path.join(base, "session.json")
+    # Scope the state file (and therefore the minted topic) to the current
+    # session, so two Claude Code sessions on the same machine never reuse each
+    # other's session.json and cross-talk on the same relay topic.
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID") or os.environ.get("CLAUDE_CODE_REMOTE_SESSION_ID")
+    fname = ("session-%s.json" % sid) if sid else "session.json"
+    return os.path.join(base, fname)
 
 
 def load_state(path):

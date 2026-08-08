@@ -190,6 +190,11 @@ The transcript path is the session JSONL (in Claude Code, typically under
 
 ## Notes & limits
 
+- **Isolation:** each session gets its own random topic — the state file is
+  scoped per session (`session-<id>.json`), so two Claude Code sessions never
+  share a topic or cross-talk. One installed Home-Screen app is pinned to the
+  session it was created for (the topic is in its URL); to talk to a different
+  agent, install that agent's own link.
 - **Privacy:** anyone holding the link can talk to the session. To end access,
   rotate the topic (`bridge.py new --force`) and stop the loop; the old link
   goes dead.

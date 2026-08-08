@@ -39,7 +39,9 @@ cp -r "$tmp/src/.claude/skills/aapp" "$DEST"
 echo "  ✓ installed to ${DEST}"
 
 # --- publish: mint a session + link (canonical hosted app, session name) ---
-export AAPP_STATE="${AAPP_STATE:-${TMPDIR:-/tmp}/aapp/session.json}"
+# Scope state to THIS session so separate sessions never share a topic.
+_sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_CODE_REMOTE_SESSION_ID:-default}}"
+export AAPP_STATE="${AAPP_STATE:-${TMPDIR:-/tmp}/aapp/session-${_sid}.json}"
 python3 "$DEST/scripts/bridge.py" new >/dev/null
 LINK="$(python3 "$DEST/scripts/bridge.py" link --name-from-session)"
 python3 "$DEST/scripts/bridge.py" send \
