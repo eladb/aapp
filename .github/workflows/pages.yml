@@ -1,0 +1,45 @@
+name: Deploy aapp to GitHub Pages
+
+# Publishes the static chat app (.claude/skills/aapp/app.html) to GitHub Pages
+# as the site's index.html. Building from the canonical file via an artifact
+# avoids Jekyll's exclusion of dot-folders like .claude/.
+
+on:
+  push:
+    branches:
+      - main
+      - claude/agent-shareable-mobile-app-0sc6ez
+    paths:
+      - .claude/skills/aapp/app.html
+      - .github/workflows/pages.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble site
+        run: |
+          mkdir -p _site
+          cp .claude/skills/aapp/app.html _site/index.html
+      - uses: actions/configure-pages@v5
+        with:
+          enablement: true
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4
