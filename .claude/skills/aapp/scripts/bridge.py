@@ -395,7 +395,12 @@ def tool_summary(name, inp):
     if name in ("Edit", "Write", "NotebookEdit"):
         return "🔧 %s: %s" % (name, _basename(inp.get("file_path") or inp.get("notebook_path")))
     if name == "Read":
-        return "📄 Read: " + _basename(inp.get("file_path"))
+        p = inp.get("file_path") or ""
+        # don't echo the chat plumbing: reading the phone-message / task files
+        if (p.endswith(".output") or p.endswith(".msg") or "/tasks/" in p
+                or "session.json" in p or "aapp-live" in p):
+            return None
+        return "📄 Read: " + _basename(p)
     if name in ("Grep", "Glob"):
         return "🔎 %s: %s" % (name, _first_line(inp.get("pattern") or inp.get("glob") or "", 80))
     if name in ("Task", "Agent"):
@@ -405,6 +410,19 @@ def tool_summary(name, inp):
     if name in ("TaskCreate", "TaskUpdate"):
         return None  # internal bookkeeping -- too noisy for the feed
     return "🔧 " + str(name)
+
+
+_PLUMBING_MARKERS = (
+    "<task-notification>", "[SYSTEM NOTIFICATION", "<system-reminder>",
+    "automated background-task event", "<github-webhook-activity>",
+    "<command-name>", "<local-command-stdout>",
+)
+
+
+def _is_plumbing_text(t):
+    """Harness-injected text (task notifications, system reminders, the chat
+    app's own round-trip events) -- not real conversation, don't echo it."""
+    return bool(t) and any(m in t for m in _PLUMBING_MARKERS)
 
 
 def summarize_event(o):
@@ -419,7 +437,7 @@ def summarize_event(o):
     role = msg.get("role")
     content = msg.get("content")
     if isinstance(content, str):
-        if role == "user" and content.strip():
+        if role == "user" and content.strip() and not _is_plumbing_text(content):
             yield ("user", content.strip()[:ACT_MAX_TEXT])
         return
     if not isinstance(content, list):
@@ -432,6 +450,8 @@ def summarize_event(o):
             continue
         ct = c.get("type")
         if ct == "text" and c.get("text", "").strip():
+            if _is_plumbing_text(c["text"]):
+                continue
             yield (role, c["text"].strip()[:ACT_MAX_TEXT])
         elif ct == "tool_use" and role == "assistant":
             line = tool_summary(c.get("name"), c.get("input"))

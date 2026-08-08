@@ -97,6 +97,11 @@
   .act.assistant .ax{color:color-mix(in srgb,var(--ink) 72%,transparent)}
   .act.tool .ax{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px}
   .act.user .ax{color:color-mix(in srgb,var(--accent) 90%,var(--ink))}
+  .act.assistant .ax{white-space:normal}
+  .act .ax p{margin:0 0 4px} .act .ax p:last-child{margin:0}
+  .act .ax ul,.act .ax ol{margin:2px 0; padding-left:18px}
+  .act .ax pre{background:var(--code-bg); color:var(--code-ink); padding:8px 10px; border-radius:8px; overflow-x:auto; margin:4px 0; font-size:12px}
+  .act .ax code.inline{background:color-mix(in srgb,var(--ink) 12%,transparent); padding:1px 4px; border-radius:5px; font-size:.85em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   body.hide-activity .act{display:none}
   .toggle{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; border:1px solid var(--line); border-radius:12px; margin-bottom:10px; font-weight:600}
   .switch{width:46px; height:28px; border-radius:999px; background:var(--line); position:relative; transition:.2s; flex:0 0 auto}
@@ -328,10 +333,15 @@
   }
   function daySep(ts){ var sep=document.createElement("div"); sep.className="daysep"; sep.textContent=fmtDay(ts); return sep; }
   function makeSys(m){ var s=document.createElement("div"); s.className="sys"; s.dataset.mid=m.mid; s.textContent=m.text; return s; }
+  function setActivityText(ax, m){
+    // the model's own messages render as markdown; tool/user lines stay literal
+    if(m.kind==="assistant"){ ax.innerHTML=renderMarkdown(m.text||""); }
+    else { ax.textContent=m.text; }
+  }
   function makeActivity(m){
     var d=document.createElement("div"); d.className="act "+(m.kind||"tool"); d.dataset.mid=m.mid;
     var ai=document.createElement("div"); ai.className="ai"; ai.textContent = m.kind==="assistant" ? "◈" : "";
-    var ax=document.createElement("div"); ax.className="ax"; ax.textContent=m.text;
+    var ax=document.createElement("div"); ax.className="ax"; setActivityText(ax, m);
     d.appendChild(ai); d.appendChild(ax); return d;
   }
   function makeItem(m){
@@ -355,7 +365,7 @@
     if(existing){
       if(m.type==="msg"){ existing.querySelector(".bubble").innerHTML=bubbleHTML(m); }
       else if(m.type==="system"){ existing.textContent=m.text; }
-      else if(m.type==="activity"){ var ax=existing.querySelector(".ax"); if(ax) ax.textContent=m.text; }
+      else if(m.type==="activity"){ var ax=existing.querySelector(".ax"); if(ax) setActivityText(ax, m); }
     } else {
       if(m.type==="msg"){
         var last=null;
