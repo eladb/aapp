@@ -18,6 +18,21 @@ in real time.
 - **Private by design:** the session token lives in the URL fragment, which
   browsers never send to the host or CDN.
 
+## One-paste install & publish
+
+Drop this repo's link into any Claude Code session and ask for a link — Claude
+runs the one-shot installer, names the app after your session, picks a fitting
+icon, and hands you a shareable URL. No hosting, no config, no questions:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+```
+
+That installs the skill into `.claude/skills/aapp` and prints a phone-ready link
+immediately (the app shell is already hosted publicly; your session travels in
+the URL fragment, so there's nothing to deploy). Then invoke the skill and the
+agent starts answering messages from the app.
+
 ## Use it
 
 The skill lives in [`.claude/skills/aapp/`](.claude/skills/aapp/). In a Claude

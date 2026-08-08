@@ -48,6 +48,10 @@ import urllib.error
 import uuid
 
 DEFAULT_SERVER = "https://ntfy.sh"
+# The app shell is a generic static file; the session lives in the URL fragment,
+# so every session can reuse one public copy. This is the canonical hosted build
+# (GitHub Pages) — used as the default so publishing needs no per-user hosting.
+CANONICAL_APP_URL = os.environ.get("AAPP_APP_URL", "https://eladb.github.io/aapp/")
 # ntfy.sh rejects/attaches bodies >= 4096 bytes. Keep the whole JSON envelope
 # comfortably under that.
 MAX_ENVELOPE_BYTES = 3000
@@ -581,6 +585,28 @@ def tail_transcript(state, args):
 # --------------------------------------------------------------------------
 # link
 # --------------------------------------------------------------------------
+def find_session_transcript():
+    """Best-effort locate the current Claude Code session's .jsonl transcript."""
+    import glob
+    sid = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    roots = [
+        os.path.join(os.path.expanduser("~"), ".claude", "projects"),
+        "/root/.claude/projects",
+    ]
+    cands = []
+    for root in roots:
+        if sid:
+            cands += glob.glob(os.path.join(root, "*", sid + ".jsonl"))
+        cands += glob.glob(os.path.join(root, "*", "*.jsonl"))
+    if sid:
+        exact = [c for c in cands if os.path.basename(c) == sid + ".jsonl"]
+        if exact:
+            return exact[0]
+    if not cands:
+        return None
+    return max(cands, key=lambda p: os.path.getmtime(p))
+
+
 def read_session_title(path):
     """Return the session's latest custom title from its transcript, or None."""
     title = None
@@ -601,12 +627,9 @@ def read_session_title(path):
         return None
     return title
 def build_link(state, app_url=None, name=None):
-    app_url = app_url or state.get("app_url")
-    if not app_url:
-        sys.exit(
-            "no app url known -- pass --app-url <public app.html url> "
-            "(it gets stored for later)"
-        )
+    # Fall back to the canonical hosted app so a link can be built with zero
+    # hosting setup.
+    app_url = app_url or state.get("app_url") or CANONICAL_APP_URL
     frag = "s=%s&t=%s" % (state["server"].rstrip("/"), state["topic"])
     if name:
         frag += "&n=" + urllib.request.quote(name)
@@ -644,8 +667,11 @@ def cmd_link(args):
         state["app_url"] = args.app_url
         save_state(args.state, state)
     name = args.name
-    if args.name_from_transcript:
-        name = read_session_title(args.name_from_transcript) or name
+    tpath = args.name_from_transcript
+    if args.name_from_session and not tpath:
+        tpath = find_session_transcript()
+    if tpath:
+        name = read_session_title(tpath) or name
     print(build_link(state, app_url=args.app_url, name=name))
 
 
@@ -731,6 +757,8 @@ def cmd_history(args):
 
 def cmd_tail(args):
     state = require_state(args)
+    if not args.transcript:
+        args.transcript = find_session_transcript()
     if not args.transcript or not os.path.exists(args.transcript):
         sys.exit("transcript not found: %s" % args.transcript)
     n = tail_transcript(state, args)
@@ -754,6 +782,8 @@ def build_parser():
     l.add_argument("--name", default=None, help="optional app display name")
     l.add_argument("--name-from-transcript", default=None,
                    help="derive the app name from a session transcript's title")
+    l.add_argument("--name-from-session", action="store_true",
+                   help="auto-detect this session's transcript and use its title")
     l.set_defaults(func=cmd_link)
 
     s = sub.add_parser("send", help="send an agent message (chunked)")
@@ -795,8 +825,8 @@ def build_parser():
     h.set_defaults(func=cmd_history)
 
     ta = sub.add_parser("tail", help="stream a session transcript as an activity feed (summaries only)")
-    ta.add_argument("--transcript", required=True,
-                    help="path to the session .jsonl transcript to follow")
+    ta.add_argument("--transcript", default=None,
+                    help="session .jsonl transcript to follow (auto-detected if omitted)")
     ta.add_argument("--from", dest="from_", default="end", choices=["end", "start"],
                     help="start at end (only new activity, default) or start (replay)")
     ta.add_argument("--backfill", type=int, default=0,

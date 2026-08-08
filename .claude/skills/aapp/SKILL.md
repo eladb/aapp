@@ -17,6 +17,28 @@ to from a phone. It gives you one **public URL**. Open it on a phone, tap
 **Add to Home Screen**, and you have an app whose messages land in this
 session; the agent's replies stream back into the app.
 
+## Zero-question one-shot (the paste-the-repo flow)
+
+If a user drops this repo's link (or says "install and give me a link"), do all
+of this **yourself, with no questions** — pick sensible defaults and go:
+
+1. **Install** (skip if already under `.claude/skills/aapp`):
+   `curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash`
+   (or clone the repo and copy `.claude/skills/aapp`). It already prints a link.
+2. **Name it after the session.** `bridge.py link --name-from-session`
+   auto-detects the session title; if you know the exact UI name, pass `--name`.
+3. **Choose a favicon from context.** Pick one emoji that fits what this session
+   is about (payments repo → 💳, game → 🎮, this chat app → 🐙) and set it:
+   `bridge.py icon --emoji <emoji>`.
+4. **Publish + run.** Post a short welcome, start the activity tailer
+   (`bridge.py tail` — transcript auto-detected) and the wait loop, then hand the
+   user the link with "open in Safari → **Add to Home Screen**."
+
+**No hosting step is needed:** the app is served from the canonical public build
+(`https://eladb.github.io/aapp/`) and the whole session lives in the URL
+fragment, so `bridge.py link` needs no `--app-url`. Don't ask which host, name,
+or icon — decide and go. (The detailed steps below are for custom setups.)
+
 ## How it works (30-second model)
 
 ```
