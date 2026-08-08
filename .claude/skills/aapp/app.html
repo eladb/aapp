@@ -118,6 +118,12 @@
   /* attachments */
   .attbtn{width:42px; height:42px; flex:0 0 auto; border:1px solid hsl(var(--input)); border-radius:var(--radius); background:hsl(var(--background)); color:hsl(var(--muted-foreground)); font-size:22px; line-height:1; display:grid; place-items:center; cursor:pointer; transition:.15s}
   .attbtn:hover{color:hsl(var(--foreground))} .attbtn:active{background:hsl(var(--muted))}
+  .attmenu{position:absolute; bottom:calc(100% + 8px); left:10px; z-index:8; min-width:210px; padding:6px;
+    background:hsl(var(--background)); border:1px solid hsl(var(--border)); border-radius:var(--radius); box-shadow:0 12px 34px rgba(0,0,0,.22)}
+  .attmenu[hidden]{display:none}
+  .attmenu button{display:flex; align-items:center; gap:10px; width:100%; padding:11px 12px; border:none; background:transparent;
+    color:hsl(var(--foreground)); font:inherit; font-size:14px; font-weight:500; border-radius:calc(var(--radius) - 3px); cursor:pointer; text-align:left}
+  .attmenu button:hover,.attmenu button:active{background:hsl(var(--accent))}
   .bubble.media{padding:4px} .bubble.media .meta{padding:1px 6px 3px}
   .attlink{display:block; line-height:0}
   .att{display:block; max-width:min(240px,72vw); max-height:340px; width:auto; height:auto; border-radius:10px; object-fit:cover; background:hsl(var(--muted))}
@@ -224,7 +230,12 @@
 
 <div class="composer">
   <button class="attbtn" id="attach" aria-label="Attach a photo or file">＋</button>
-  <input type="file" id="file" multiple hidden>
+  <input type="file" id="fileImg" accept="image/*" hidden>
+  <input type="file" id="fileAny" hidden>
+  <div class="attmenu" id="attmenu" role="menu" hidden>
+    <button type="button" data-t="img">🖼️ Photo or camera</button>
+    <button type="button" data-t="any">📎 File</button>
+  </div>
   <textarea id="input" rows="1" placeholder="Message the agent…" enterkeyhint="send" autocapitalize="sentences" autocomplete="off"></textarea>
   <button class="send" id="send" aria-label="Send" disabled>↑</button>
 </div>
@@ -765,11 +776,19 @@
       addSystem("⚠︎ Upload failed — check your connection and try again.");
     }
   }
-  $("attach").addEventListener("click", function(){ $("file").click(); });
-  $("file").addEventListener("change", function(){
-    var files=Array.prototype.slice.call(this.files||[]); this.value="";
-    files.forEach(function(f){ handleFile(f); });
+  // ＋ opens a small menu; each option is a dedicated single-select input.
+  // (iOS standalone PWAs get stuck on the Photo Library picker when the input
+  // has `multiple`, so we use one image-typed input and one file input.)
+  var attMenu=$("attmenu");
+  function onFiles(){ var files=Array.prototype.slice.call(this.files||[]); this.value=""; files.forEach(function(f){ handleFile(f); }); }
+  $("fileImg").addEventListener("change", onFiles);
+  $("fileAny").addEventListener("change", onFiles);
+  $("attach").addEventListener("click", function(e){ e.stopPropagation(); attMenu.hidden=!attMenu.hidden; });
+  attMenu.addEventListener("click", function(e){
+    var b=e.target.closest("button"); if(!b) return; e.stopPropagation(); attMenu.hidden=true;
+    (b.getAttribute("data-t")==="img" ? $("fileImg") : $("fileAny")).click();
   });
+  document.addEventListener("click", function(){ if(!attMenu.hidden) attMenu.hidden=true; });
 
   // ---------- settings sheet ----------
   var scrim=$("scrim"), sheet=$("sheet");
