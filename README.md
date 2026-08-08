@@ -46,6 +46,23 @@ Code session:
 Claude follows [`SKILL.md`](.claude/skills/aapp/SKILL.md) to mint a session,
 host the app, hand you the link, and then act as the other end of the chat.
 
+## Updating existing sessions
+
+- **Phone apps (already-shared links / Home-Screen installs):** they update
+  automatically — the app is served from one stable URL
+  (`https://eladb.github.io/aapp/`), so a redeploy reaches every install on its
+  next load. Just **reload**, or fully close and reopen the Home-Screen app to
+  force a fresh fetch. The link never changes; nothing needs re-sharing. Live
+  data (messages, title, icon, activity) flows over the relay regardless of app
+  version — only UI *code* changes need a reload.
+- **A Claude session that installed the skill:** re-run the installer to refresh
+  `.claude/skills/aapp`, then restart any running tailer/listener so agent-side
+  changes take effect:
+  ```bash
+  curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+  ```
+  (`raw.githubusercontent` caches for ~5 min after a push.)
+
 ## Layout
 
 | File | Role |
