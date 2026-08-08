@@ -51,7 +51,7 @@ DEFAULT_SERVER = "https://ntfy.sh"
 # The app shell is a generic static file; the session lives in the URL fragment,
 # so every session can reuse one public copy. This is the canonical hosted build
 # (GitHub Pages) — used as the default so publishing needs no per-user hosting.
-CANONICAL_APP_URL = os.environ.get("AAPP_APP_URL", "https://eladb.github.io/aapp/")
+CANONICAL_APP_URL = os.environ.get("AAPP_APP_URL", "https://eladb.github.io/aapp/app.html")
 # ntfy.sh rejects/attaches bodies >= 4096 bytes. Keep the whole JSON envelope
 # comfortably under that.
 MAX_ENVELOPE_BYTES = 3000

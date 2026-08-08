@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>aapp — chat with your coding agent from your phone</title>
+<meta name="description" content="aapp turns any Claude Code session into a public, installable chat app. One paste, one link. No server, no account.">
+<meta name="theme-color" content="#09090b">
+<meta property="og:title" content="aapp — chat with your coding agent from your phone">
+<meta property="og:description" content="Turn any Claude Code session into a public, installable chat app. One paste, one link.">
+<meta name="twitter:card" content="summary_large_image">
+<script>
+  // Old session links point at the site root (…/#t=…). Send them to the app.
+  (function(){ var h=location.hash||""; if(/[#&]t=/.test(h)){ location.replace("app.html"+h); } })();
+</script>
+<style>
+  :root{
+    --bg:#09090b; --bg2:#0f0f11; --card:#141416; --ink:#fafafa; --muted:#a1a1aa;
+    --dim:#71717a; --line:#27272a; --line2:#1c1c1f; --pri:#fafafa; --pri-ink:#09090b;
+    --radius:14px; --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
+    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  }
+  a{color:inherit; text-decoration:none}
+  .wrap{max-width:1080px; margin:0 auto; padding:0 22px}
+  /* subtle top glow */
+  .glow{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0}
+  .glow::before{content:""; position:absolute; top:-340px; left:50%; transform:translateX(-50%);
+    width:900px; height:600px; background:radial-gradient(closest-side, rgba(120,120,160,.18), transparent 70%); filter:blur(10px)}
+  /* nav */
+  nav{position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(10px);
+    background:color-mix(in srgb, var(--bg) 78%, transparent); border-bottom:1px solid var(--line2)}
+  .nav{display:flex; align-items:center; justify-content:space-between; height:60px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em}
+  .mark{width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
+    background:linear-gradient(135deg,#3f3f46,#18181b); border:1px solid var(--line); font-size:15px}
+  .nav .links{display:flex; align-items:center; gap:8px}
+  .ghost{color:var(--muted); padding:8px 12px; border-radius:10px; font-size:14px; font-weight:500}
+  .ghost:hover{color:var(--ink); background:var(--card)}
+  /* buttons */
+  .btn{display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:11px;
+    font-weight:600; font-size:15px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; transition:.15s}
+  .btn:hover{border-color:#3f3f46; background:#17171a}
+  .btn.pri{background:var(--pri); color:var(--pri-ink); border-color:var(--pri)}
+  .btn.pri:hover{opacity:.9}
+  /* hero */
+  header.hero{position:relative; padding:74px 0 30px; text-align:center}
+  .eyebrow{display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted);
+    border:1px solid var(--line); background:var(--card); padding:5px 12px; border-radius:999px; margin-bottom:22px}
+  .eyebrow b{color:var(--ink); font-weight:600}
+  h1{font-size:clamp(34px,6.2vw,60px); line-height:1.03; letter-spacing:-.035em; font-weight:800; margin:0 auto 18px; max-width:15ch}
+  .lede{font-size:clamp(16px,2.4vw,20px); color:var(--muted); max-width:56ch; margin:0 auto 26px}
+  .cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
+  .subnote{margin-top:16px; font-size:13px; color:var(--dim)}
+  .subnote b{color:var(--muted); font-weight:600}
+  /* terminal */
+  .term{position:relative; z-index:1; max-width:640px; margin:30px auto 0; text-align:left;
+    background:#0c0c0e; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.5)}
+  .term .bar{display:flex; align-items:center; gap:7px; padding:11px 14px; border-bottom:1px solid var(--line2)}
+  .term .bar i{width:11px; height:11px; border-radius:50%; background:#3f3f46; display:inline-block}
+  .term .bar .t{margin-left:8px; font-size:12px; color:var(--dim); font-family:var(--mono)}
+  .term pre{margin:0; padding:16px 16px; font-family:var(--mono); font-size:13.5px; line-height:1.7; color:#e4e4e7; overflow-x:auto}
+  .term .p{color:#7cc8a6}
+  .term .c{color:var(--dim)}
+  .copy{position:absolute; top:9px; right:10px; font-size:12px; color:var(--muted); background:var(--card);
+    border:1px solid var(--line); border-radius:8px; padding:5px 10px; cursor:pointer}
+  .copy:hover{color:var(--ink)}
+  /* hero showcase (phone) */
+  .showcase{position:relative; z-index:1; display:flex; justify-content:center; margin:56px auto 0}
+  .phone{width:290px; border:10px solid #18181b; border-radius:42px; background:#0b0b0d; box-shadow:0 30px 80px rgba(0,0,0,.6);
+    overflow:hidden}
+  .phone .scr{background:var(--bg); height:520px; display:flex; flex-direction:column}
+  .ph-h{display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid var(--line2)}
+  .ph-av{width:32px; height:32px; border-radius:9px; background:#18181b; border:1px solid var(--line); display:grid; place-items:center; font-size:16px}
+  .ph-h b{font-size:14px} .ph-h .on{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted)}
+  .ph-h .dot{width:6px; height:6px; border-radius:50%; background:#22c55e}
+  .ph-b{flex:1; padding:14px 12px; display:flex; flex-direction:column; gap:8px; overflow:hidden}
+  .msg{max-width:82%; padding:8px 11px; border-radius:15px; font-size:13px; line-height:1.45}
+  .msg.them{align-self:flex-start; background:var(--card); border:1px solid var(--line); border-bottom-left-radius:6px}
+  .msg.me{align-self:flex-end; background:var(--pri); color:var(--pri-ink); border-bottom-right-radius:6px}
+  .act{align-self:stretch; display:flex; gap:7px; font-size:11.5px; color:var(--muted); padding:0 2px}
+  .act .ln{border-left:2px solid var(--line); padding-left:8px; font-family:var(--mono); font-size:11px}
+  .ph-c{border-top:1px solid var(--line2); padding:10px; display:flex; gap:8px}
+  .ph-c .in{flex:1; border:1px solid var(--line); border-radius:11px; padding:8px 12px; font-size:12.5px; color:var(--dim)}
+  .ph-c .snd{width:34px; height:34px; border-radius:10px; background:var(--pri); color:var(--pri-ink); display:grid; place-items:center; font-weight:700}
+  /* sections */
+  section{position:relative; z-index:1; padding:66px 0; border-top:1px solid var(--line2)}
+  .kicker{font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:600; margin-bottom:12px}
+  h2{font-size:clamp(24px,3.6vw,34px); letter-spacing:-.02em; font-weight:750; margin:0 0 12px}
+  .sub{color:var(--muted); max-width:60ch; margin:0 0 30px}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px}
+  .feat{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px 18px 20px}
+  .feat .ic{width:36px; height:36px; border-radius:10px; background:#18181b; border:1px solid var(--line); display:grid; place-items:center; font-size:18px; margin-bottom:12px}
+  .feat h3{margin:0 0 6px; font-size:16px; font-weight:650; letter-spacing:-.01em}
+  .feat p{margin:0; color:var(--muted); font-size:14px}
+  /* how it works */
+  .flow{display:flex; align-items:stretch; gap:12px; flex-wrap:wrap}
+  .node{flex:1; min-width:180px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px; text-align:center}
+  .node .e{font-size:24px} .node b{display:block; margin-top:8px; font-size:15px} .node span{color:var(--muted); font-size:13px}
+  .arrow{align-self:center; color:var(--dim); font-size:22px}
+  /* final */
+  .final{text-align:center}
+  .final h2{max-width:20ch; margin-inline:auto}
+  footer{border-top:1px solid var(--line2); padding:34px 0 60px; color:var(--dim); font-size:13.5px}
+  .foot{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px}
+  .foot .links{display:flex; gap:16px}
+  .foot a:hover{color:var(--ink)}
+  .badge{font-family:var(--mono); font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:3px 8px}
+  @media (max-width:640px){ .showcase{margin-top:44px} section{padding:52px 0} }
+</style>
+</head>
+<body>
+<div class="glow"></div>
+
+<nav><div class="wrap nav">
+  <a class="brand" href="/aapp/"><span class="mark">◈</span> aapp</a>
+  <div class="links">
+    <a class="ghost" href="#features">Features</a>
+    <a class="ghost" href="#install">Install</a>
+    <a class="ghost" href="https://github.com/eladb/aapp">GitHub ↗</a>
+  </div>
+</div></nav>
+
+<header class="hero"><div class="glow"></div><div class="wrap">
+  <span class="eyebrow"><b>Open source</b> · MIT · a Claude Code skill</span>
+  <h1>Chat with your coding agent from your phone.</h1>
+  <p class="lede">aapp turns any Claude Code session into a public, installable chat app — no server, no account. One paste gives you a link; open it on your phone and talk to the agent in real time.</p>
+  <div class="cta">
+    <a class="btn pri" href="#install">Get started</a>
+    <a class="btn" href="https://github.com/eladb/aapp">★ Star on GitHub</a>
+  </div>
+  <div class="subnote">Works on <b>iOS &amp; Android</b> · Add to Home Screen · runs in locked-down sandboxes</div>
+
+  <div class="showcase">
+    <div class="phone"><div class="scr">
+      <div class="ph-h"><div class="ph-av">🐙</div><div><b>Career</b><div class="on"><span class="dot"></span>online</div></div></div>
+      <div class="ph-b">
+        <div class="msg them">On it — pushing the fix and opening a PR now.</div>
+        <div class="act"><span class="ln">🔧 Bash: git push origin main</span></div>
+        <div class="act"><span class="ln">🔧 Edit: resume.md</span></div>
+        <div class="msg me">nice — add the metrics table too</div>
+        <div class="msg them">Done. Reload to see the table render ✅</div>
+      </div>
+      <div class="ph-c"><div class="in">Message the agent…</div><div class="snd">↑</div></div>
+    </div></div>
+  </div>
+</div></header>
+
+<section id="install"><div class="wrap">
+  <div class="kicker">One paste</div>
+  <h2>Install &amp; publish in one line.</h2>
+  <p class="sub">Drop the repo into any Claude Code session, or run the installer. It drops in the skill, names the app after your session, picks a fitting icon, and hands you a shareable link — nothing to deploy.</p>
+  <div class="term">
+    <div class="bar"><i></i><i></i><i></i><span class="t">bash</span><button class="copy" id="cp">Copy</button></div>
+    <pre id="cmd"><span class="c"># in any Claude Code session</span>
+<span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+
+<span class="c">✅ Your shareable link — open on your phone, then Add to Home Screen:</span>
+   https://eladb.github.io/aapp/app.html#s=…&amp;t=…</pre>
+  </div>
+</div></section>
+
+<section id="features"><div class="wrap">
+  <div class="kicker">What you get</div>
+  <h2>A real app, not a webhook.</h2>
+  <p class="sub">Feature-rich, mobile-first, and private by design — the whole thing is one self-contained file.</p>
+  <div class="grid">
+    <div class="feat"><div class="ic">⚡</div><h3>One-paste install</h3><p>Paste the repo, get a link. The app shell is already hosted; your session lives in the URL fragment, so there's nothing to deploy.</p></div>
+    <div class="feat"><div class="ic">📲</div><h3>Installable PWA</h3><p>Add to Home Screen for a standalone app — its own icon and name, full-screen, no browser chrome.</p></div>
+    <div class="feat"><div class="ic">🛰️</div><h3>No server, no account</h3><p>Messaging rides the free ntfy.sh relay over plain HTTPS. Works even in locked-down sandboxes where tunnels are blocked.</p></div>
+    <div class="feat"><div class="ic">👀</div><h3>Live activity feed</h3><p>Watch the agent work — messages and compact tool-call lines stream in. Summaries only; raw output stays private. Toggle per device.</p></div>
+    <div class="feat"><div class="ic">🎨</div><h3>Live name &amp; icon</h3><p>The app mirrors the session name and a context-fit favicon — set an emoji and it updates the icon and avatar instantly.</p></div>
+    <div class="feat"><div class="ic">💬</div><h3>Feature-rich chat</h3><p>Markdown, tables, code blocks with copy, typing indicators, multi-user attribution, auto-reconnect, and on-device history.</p></div>
+    <div class="feat"><div class="ic">🔒</div><h3>Private by design</h3><p>The session token lives in the URL fragment — never sent to the host or CDN. Per-session topics never cross-talk.</p></div>
+    <div class="feat"><div class="ic">🌗</div><h3>Clean, theme-aware</h3><p>A neutral, shadcn-style interface that looks right in light and dark, tuned for iOS safe areas.</p></div>
+  </div>
+</div></section>
+
+<section><div class="wrap">
+  <div class="kicker">How it works</div>
+  <h2>Phone ⇄ relay ⇄ agent.</h2>
+  <p class="sub">A per-session topic on a public relay connects the two. Both sides need only outbound HTTPS.</p>
+  <div class="flow">
+    <div class="node"><div class="e">📱</div><b>Your phone</b><span>the installed chat app</span></div>
+    <div class="arrow">⇄</div>
+    <div class="node"><div class="e">🛰️</div><b>ntfy.sh</b><span>public HTTPS relay</span></div>
+    <div class="arrow">⇄</div>
+    <div class="node"><div class="e">◈</div><b>The agent</b><span>your Claude Code session</span></div>
+  </div>
+</div></section>
+
+<section class="final"><div class="wrap">
+  <div class="kicker">Open source</div>
+  <h2>Don't like something? Fork it.</h2>
+  <p class="sub" style="margin-inline:auto">MIT licensed. One skill, one HTML file, one stdlib script. Read it, change it, ship it.</p>
+  <div class="cta">
+    <a class="btn pri" href="https://github.com/eladb/aapp">Browse the code</a>
+    <a class="btn" href="#install">Copy the installer</a>
+  </div>
+</div></section>
+
+<footer><div class="wrap foot">
+  <div class="brand"><span class="mark">◈</span> aapp</div>
+  <div class="links">
+    <a href="https://github.com/eladb/aapp">GitHub</a>
+    <a href="https://github.com/eladb/aapp/blob/main/.claude/skills/aapp/SKILL.md">Docs</a>
+    <span class="badge">MIT</span>
+  </div>
+  <div>© 2026 · built with Claude Code</div>
+</div></footer>
+
+<script>
+  document.getElementById("cp").addEventListener("click", function(){
+    var t="curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash";
+    (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject())
+      .then(function(){ var b=document.getElementById("cp"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy";},1200); })
+      .catch(function(){});
+  });
+</script>
+</body>
+</html>
