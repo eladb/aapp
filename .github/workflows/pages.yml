@@ -13,7 +13,7 @@ on:
       - claude/agent-shareable-mobile-app-0sc6ez
     paths:
       - .claude/skills/aapp/app.html
-      - site/index.html
+      - site/**
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -37,7 +37,7 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp site/index.html _site/index.html          # landing page (root)
+          cp -r site/. _site/                            # landing page + assets (screenshot)
           cp .claude/skills/aapp/app.html _site/app.html # the chat app
       - uses: actions/configure-pages@v5
         with:

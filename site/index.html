@@ -8,7 +8,9 @@
 <meta name="theme-color" content="#09090b">
 <meta property="og:title" content="aapp — chat with your coding agent from your phone">
 <meta property="og:description" content="Turn any Claude Code session into a public, installable chat app. One paste, one link.">
+<meta property="og:image" content="https://eladb.github.io/aapp/app-screenshot.png">
 <meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://eladb.github.io/aapp/app-screenshot.png">
 <script>
   // Old session links point at the site root (…/#t=…). Send them to the app.
   (function(){ var h=location.hash||""; if(/[#&]t=/.test(h)){ location.replace("app.html"+h); } })();
@@ -76,6 +78,7 @@
   .showcase{position:relative; z-index:1; display:flex; justify-content:center; margin:56px auto 0}
   .phone{width:290px; border:10px solid #18181b; border-radius:42px; background:#0b0b0d; box-shadow:0 30px 80px rgba(0,0,0,.6);
     overflow:hidden}
+  .phone .shot{display:block; width:100%; height:auto}
   .phone .scr{background:var(--bg); height:520px; display:flex; flex-direction:column}
   .ph-h{display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid var(--line2)}
   .ph-av{width:32px; height:32px; border-radius:9px; background:#18181b; border:1px solid var(--line); display:grid; place-items:center; font-size:16px}
@@ -139,17 +142,8 @@
   <div class="subnote">Works on <b>iOS &amp; Android</b> · Add to Home Screen · runs in locked-down sandboxes</div>
 
   <div class="showcase">
-    <div class="phone"><div class="scr">
-      <div class="ph-h"><div class="ph-av">🐙</div><div><b>Career</b><div class="on"><span class="dot"></span>online</div></div></div>
-      <div class="ph-b">
-        <div class="msg them">On it — pushing the fix and opening a PR now.</div>
-        <div class="act"><span class="ln">🔧 Bash: git push origin main</span></div>
-        <div class="act"><span class="ln">🔧 Edit: resume.md</span></div>
-        <div class="msg me">nice — add the metrics table too</div>
-        <div class="msg them">Done. Reload to see the table render ✅</div>
-      </div>
-      <div class="ph-c"><div class="in">Message the agent…</div><div class="snd">↑</div></div>
-    </div></div>
+    <div class="phone"><img class="shot" src="app-screenshot.png" width="390" height="620"
+      alt="The aapp chat app running on a phone — talking to a live Claude Code session, with an activity feed and a rendered table"></div>
   </div>
 </div></header>
 
