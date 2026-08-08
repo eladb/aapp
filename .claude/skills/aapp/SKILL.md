@@ -189,6 +189,10 @@ The transcript path is the session JSONL (in Claude Code, typically under
   responsive on a phone.
 - Treat each inbound message as an instruction to act on **in this session** —
   edit code, run commands, answer questions — then report back.
+- **Images & files:** send one with `bridge.py attach --file <path>` (or
+  `--url`); the app shows images inline and other files as a download chip. Users
+  can attach photos (camera/library) and files from the composer — those arrive
+  in your `wait` loop as a line with `type:"attach"` and a `url` you can download.
 - Reconnects are automatic and the relay caches ~12h, so a phone that sleeps
   and wakes still catches up. Persisted history lives in the phone's
   localStorage.

@@ -115,6 +115,18 @@
   .sys{align-self:center; font-size:12px; color:hsl(var(--muted-foreground)); background:hsl(var(--muted)); padding:4px 12px; border-radius:999px; border:1px solid hsl(var(--border)); max-width:90%; text-align:center}
   .daysep{align-self:center; font-size:10.5px; color:hsl(var(--muted-foreground)); letter-spacing:.04em; text-transform:uppercase; margin:10px 0 2px}
   .bubble.failed{border-color:hsl(var(--destructive)); box-shadow:0 0 0 1px hsl(var(--destructive))}
+  /* attachments */
+  .attbtn{width:42px; height:42px; flex:0 0 auto; border:1px solid hsl(var(--input)); border-radius:var(--radius); background:hsl(var(--background)); color:hsl(var(--muted-foreground)); font-size:22px; line-height:1; display:grid; place-items:center; cursor:pointer; transition:.15s}
+  .attbtn:hover{color:hsl(var(--foreground))} .attbtn:active{background:hsl(var(--muted))}
+  .bubble.media{padding:4px} .bubble.media .meta{padding:1px 6px 3px}
+  .attlink{display:block; line-height:0}
+  .att{display:block; max-width:min(240px,72vw); max-height:340px; width:auto; height:auto; border-radius:10px; object-fit:cover; background:hsl(var(--muted))}
+  .att.up{opacity:.5}
+  .filechip{display:flex; align-items:center; gap:10px; text-decoration:none; color:inherit; padding:3px 2px}
+  .filechip .fi{font-size:22px; flex:0 0 auto}
+  .filechip .fn{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px}
+  .filechip .fs{color:hsl(var(--muted-foreground)); font-size:12px; flex:0 0 auto}
+  .row.me .filechip .fs{color:hsl(var(--primary-foreground)/0.7)}
   /* activity feed (session transcript, summaries only) */
   .act{align-self:stretch; display:flex; gap:8px; align-items:flex-start; font-size:12.5px; color:hsl(var(--muted-foreground)); padding:1px 4px; margin:0 auto; max-width:760px; width:100%}
   .act .ai{flex:0 0 auto; width:16px; text-align:center; color:hsl(var(--muted-foreground))}
@@ -211,6 +223,8 @@
 <button id="tobottom" aria-label="Scroll to latest">↓<span class="badge" id="unread" style="display:none">0</span></button>
 
 <div class="composer">
+  <button class="attbtn" id="attach" aria-label="Attach a photo or file">＋</button>
+  <input type="file" id="file" multiple hidden>
   <textarea id="input" rows="1" placeholder="Message the agent…" enterkeyhint="send" autocapitalize="sentences" autocomplete="off"></textarea>
   <button class="send" id="send" aria-label="Send" disabled>↑</button>
 </div>
@@ -373,11 +387,25 @@
   // ---------- rendering ----------
   function clearView(){ listEl.innerHTML=""; }
   function peerLabel(cid){ cid=(cid||"").replace(/[^a-z0-9]/gi,""); return "Guest "+(cid.slice(-4).toUpperCase()||"—"); }
+  function isChat(m){ return m.type==="msg" || m.type==="attach"; }
+  function safeSrc(u){ return /^(https?:|blob:|data:image\/)/i.test(u||"") ? u : "#"; }
+  function fmtSize(b){ if(b==null) return ""; if(b<1024) return b+" B"; if(b<1048576) return Math.round(b/1024)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
+  function attachHTML(m){
+    if(/^image\//.test(m.mime||"")){
+      return '<a class="attlink" href="'+safeSrc(m.url)+'" target="_blank" rel="noopener noreferrer"><img class="att'+(m.uploading?" up":"")+'" src="'+safeSrc(m.url)+'" alt="'+esc(m.name||"image")+'"'+((m.w&&m.h)?(' style="aspect-ratio:'+(m.w|0)+'/'+(m.h|0)+'"'):"")+'></a>';
+    }
+    return '<a class="filechip" href="'+safeSrc(m.url)+'" target="_blank" rel="noopener noreferrer" download><span class="fi">📄</span><span class="fn">'+esc(m.name||"file")+'</span><span class="fs">'+fmtSize(m.size)+'</span></a>';
+  }
   function bubbleHTML(m){
     var who = (m.role==="user" && m.mine===false) ? '<div class="who">'+esc(peerLabel(m.cid))+'</div>' : "";
-    var inner = m.role==="user" ? "<p>"+esc(m.text).replace(/\n/g,"<br>")+"</p>" : renderMarkdown(m.text||"");
-    return who + inner + '<div class="meta">'+fmtTime(m.ts)+'</div>';
+    var inner;
+    if(m.type==="attach"){ inner = attachHTML(m) + (m.text?('<p>'+esc(m.text).replace(/\n/g,"<br>")+'</p>'):""); }
+    else if(m.role==="user"){ inner = "<p>"+esc(m.text).replace(/\n/g,"<br>")+"</p>"; }
+    else { inner = renderMarkdown(m.text||""); }
+    var status = (m.type==="attach" && m.uploading) ? "uploading… " : "";
+    return who + inner + '<div class="meta">'+status+fmtTime(m.ts)+'</div>';
   }
+  function bubbleClass(m){ return "bubble"+((m.type==="attach" && /^image\//.test(m.mime||""))?" media":"")+(m.failed?" failed":""); }
   function makeRow(m){
     var isUser=m.role==="user";
     var mine=isUser && m.mine!==false;   // own (or legacy) user message -> right
@@ -385,7 +413,7 @@
     var row=document.createElement("div");
     row.className="row "+(mine?"me":"them")+(peer?" peer":"");
     row.dataset.mid=m.mid;
-    var b=document.createElement("div"); b.className="bubble";
+    var b=document.createElement("div"); b.className=bubbleClass(m);
     b.innerHTML=bubbleHTML(m);
     row.appendChild(b);
     return row;
@@ -412,7 +440,7 @@
     clearView();
     var lastDay=null;
     messages.forEach(function(m){
-      if(m.type==="msg"){ var dk=dayKey(m.ts); if(dk!==lastDay){ lastDay=dk; listEl.appendChild(daySep(m.ts)); } }
+      if(isChat(m)){ var dk=dayKey(m.ts); if(dk!==lastDay){ lastDay=dk; listEl.appendChild(daySep(m.ts)); } }
       listEl.appendChild(makeItem(m));
     });
     emptyEl.style.display = messages.length ? "none" : "";
@@ -422,18 +450,18 @@
     emptyEl.style.display="none";
     var existing=listEl.querySelector('[data-mid="'+cssEsc(m.mid)+'"]');
     if(existing){
-      if(m.type==="msg"){ existing.querySelector(".bubble").innerHTML=bubbleHTML(m); }
+      if(isChat(m)){ var bub=existing.querySelector(".bubble"); if(bub){ bub.className=bubbleClass(m); bub.innerHTML=bubbleHTML(m); } }
       else if(m.type==="system"){ existing.textContent=m.text; }
       else if(m.type==="activity"){ var ax=existing.querySelector(".ax"); if(ax) setActivityText(ax, m); }
     } else {
-      if(m.type==="msg"){
+      if(isChat(m)){
         var last=null;
-        for(var i=messages.length-2;i>=0;i--){ if(messages[i].type==="msg"){ last=messages[i]; break; } }
+        for(var i=messages.length-2;i>=0;i--){ if(isChat(messages[i])){ last=messages[i]; break; } }
         if(!last || dayKey(last.ts)!==dayKey(m.ts)){ listEl.appendChild(daySep(m.ts)); }
       }
       listEl.appendChild(makeItem(m));
     }
-    if(atBottom) scrollToBottom(); else if(m.type==="msg") bumpUnread();
+    if(atBottom) scrollToBottom(); else if(isChat(m)) bumpUnread();
   }
   function cssEsc(s){ return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^\w-]/g,"_"); }
   function pruneMemory(){
@@ -513,6 +541,7 @@
     if(type==="activity"){ addActivity(env, ntfyId); return; }
     if(type==="title"){ if(env.text) setAppName(env.text); return; }
     if(type==="icon"){ setAppIcon(env); return; }
+    if(type==="attach"){ addAttach(env, ntfyId); return; }
     if(role==="user" && type==="msg"){
       // our own user messages already shown optimistically; show if from elsewhere
     }
@@ -535,6 +564,14 @@
     if(env.last) m.done=true;
     if(role==="agent" && type==="msg") setTyping(false);
     upsertRow(m); save(); pruneMemory();
+  }
+  function addAttach(env, ntfyId){
+    var mid=env.mid || ntfyId; if(!mid) return;
+    var set=seenParts[mid] || (seenParts[mid]=new Set()); if(set.has(0)) return; set.add(0);
+    var m={mid:mid, role:env.role, type:"attach", mime:env.mime||"", url:env.url, name:env.name,
+           size:env.size, w:env.w, h:env.h, text:env.text||"", ts:env.ts||Date.now(), done:true,
+           cid:env.cid, mine:(env.role==="user")?false:undefined};
+    byId[mid]=m; messages.push(m); upsertRow(m); save(); pruneMemory();
   }
   var seenAct={};
   function addActivity(env, ntfyId){
@@ -681,6 +718,58 @@
   inputEl.addEventListener("input", function(){ autoGrow(); sendEl.disabled=inputEl.value.trim()===""; });
   inputEl.addEventListener("focus", function(){ setTimeout(function(){ scrollToBottom(true); }, 300); });
   inputEl.addEventListener("blur", function(){ setTimeout(stickBottom, 100); });
+
+  // ---------- attachments (photos from camera/library + files) ----------
+  function downscaleImage(file, maxDim, quality){
+    return new Promise(function(resolve){
+      var img=new Image();
+      img.onload=function(){
+        var w=img.naturalWidth||img.width, h=img.naturalHeight||img.height;
+        var scale=Math.min(1, maxDim/Math.max(w, h||1));
+        var cw=Math.max(1,Math.round(w*scale)), ch=Math.max(1,Math.round(h*scale));
+        try{
+          var c=document.createElement("canvas"); c.width=cw; c.height=ch;
+          c.getContext("2d").drawImage(img,0,0,cw,ch);
+          c.toBlob(function(b){ resolve({blob:b||file, w:cw, h:ch}); }, "image/jpeg", quality);
+        }catch(e){ resolve({blob:file, w:w, h:h}); }
+      };
+      img.onerror=function(){ resolve({blob:file, w:0, h:0}); };
+      img.src=URL.createObjectURL(file);
+    });
+  }
+  async function uploadToNtfy(blob, name, mime){
+    var resp=await fetch(server+"/"+encodeURIComponent(topic), {method:"PUT", body:blob,
+      headers:{"Filename":name||"file","Content-Type":mime||"application/octet-stream"}});
+    if(!resp || !resp.ok) throw new Error("upload failed "+(resp&&resp.status));
+    var j=await resp.json();
+    if(!j.attachment || !j.attachment.url) throw new Error("no attachment url");
+    return j.attachment;   // {url,name,type,size}
+  }
+  async function handleFile(file){
+    if(!file || !topic) return;
+    var isImg=/^image\//.test(file.type||"");
+    var mid="a"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    var m={mid:mid, role:"user", type:"attach", mime:file.type||"application/octet-stream",
+           url:URL.createObjectURL(file), name:file.name, size:file.size, mine:true,
+           ts:Date.now(), done:true, uploading:true};
+    byId[mid]=m; messages.push(m); seenParts[mid]=new Set([0]); upsertRow(m); save();
+    try{
+      var blob=file, w=0, h=0;
+      if(isImg){ var d=await downscaleImage(file, 1600, 0.85); blob=d.blob; w=d.w; h=d.h; m.mime="image/jpeg"; }
+      var att=await uploadToNtfy(blob, file.name, blob.type||file.type);
+      m.url=att.url; if(att.size!=null) m.size=att.size; m.uploading=false; upsertRow(m); save();
+      await publish({v:1,cid:CID,role:"user",type:"attach",mid:mid,seq:0,last:true,
+        url:att.url, name:att.name||file.name, mime:att.type||m.mime, size:m.size, w:w, h:h, ts:Date.now()});
+    }catch(e){
+      m.uploading=false; m.failed=true; upsertRow(m);
+      addSystem("⚠︎ Upload failed — check your connection and try again.");
+    }
+  }
+  $("attach").addEventListener("click", function(){ $("file").click(); });
+  $("file").addEventListener("change", function(){
+    var files=Array.prototype.slice.call(this.files||[]); this.value="";
+    files.forEach(function(f){ handleFile(f); });
+  });
 
   // ---------- settings sheet ----------
   var scrim=$("scrim"), sheet=$("sheet");

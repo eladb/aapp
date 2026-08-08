@@ -39,6 +39,7 @@ Envelope schema (v1), carried as the ntfy message body:
 
 import argparse
 import json
+import mimetypes
 import os
 import ssl
 import sys
@@ -146,6 +147,30 @@ def http_post(url, data, headers=None, timeout=30):
 def http_open(url, timeout=None):
     req = urllib.request.Request(url, method="GET")
     return _opener().open(req, timeout=timeout)
+
+
+def http_put(url, data, headers=None, timeout=120):
+    req = urllib.request.Request(url, data=data, headers=headers or {}, method="PUT")
+    return _opener().open(req, timeout=timeout)
+
+
+def ntfy_upload(sess, filepath):
+    """Upload a file to the topic as an ntfy attachment; return its dict
+    ({url,name,type,size}). ntfy hosts the file and returns a public URL."""
+    name = os.path.basename(filepath)
+    mime = mimetypes.guess_type(name)[0] or "application/octet-stream"
+    with open(filepath, "rb") as f:
+        data = f.read()
+    resp = http_put(
+        "%s/%s" % (sess["server"].rstrip("/"), sess["topic"]),
+        data=data,
+        headers={"Filename": name, "Content-Type": mime},
+    )
+    outer = json.loads(resp.read().decode("utf-8"))
+    att = outer.get("attachment") or {}
+    if not att.get("url"):
+        raise ValueError("upload did not return an attachment url")
+    return att
 
 
 # --------------------------------------------------------------------------
@@ -312,6 +337,15 @@ def wait_for_user_message(state, args):
                 if env.get("role") != "user":
                     continue
                 mtype = env.get("type", "msg")
+                if mtype == "attach":
+                    save_state(args.state, state)
+                    return {
+                        "type": "attach",
+                        "url": env.get("url"), "name": env.get("name"),
+                        "mime": env.get("mime"), "size": env.get("size"),
+                        "text": env.get("text"), "mid": env.get("mid"),
+                        "ts": env.get("ts"), "cid": env.get("cid"),
+                    }
                 if mtype not in ("msg", "system"):
                     # user-side typing/status: surface only if asked
                     if args.follow:
@@ -723,6 +757,31 @@ def cmd_title(args):
     print(json.dumps({"title": text[:80]}))
 
 
+def cmd_attach(args):
+    state = require_state(args)
+    if args.file:
+        att = ntfy_upload(state, args.file)
+        url = att.get("url")
+        name = att.get("name") or os.path.basename(args.file)
+        mime = att.get("type") or mimetypes.guess_type(name)[0] or "application/octet-stream"
+        size = att.get("size")
+    elif args.url:
+        url = args.url
+        name = args.name or url.rsplit("/", 1)[-1]
+        mime = args.mime or mimetypes.guess_type(name)[0] or "application/octet-stream"
+        size = None
+    else:
+        sys.exit("provide --file <path> or --url <url>")
+    env = {
+        "v": PROTOCOL_VERSION, "cid": state["cid"], "role": "agent", "type": "attach",
+        "mid": "att-" + uuid.uuid4().hex[:12], "seq": 0, "last": True,
+        "url": url, "name": name, "mime": mime, "size": size,
+        "text": args.text or "", "ts": now_ms(),
+    }
+    publish_envelope(state["server"], state["topic"], env)
+    print(json.dumps({"attach": {"url": url, "name": name, "mime": mime}}))
+
+
 def cmd_icon(args):
     state = require_state(args)
     fields = {}
@@ -814,6 +873,14 @@ def build_parser():
     ic.add_argument("--emoji", default=None, help="an emoji to use as the icon")
     ic.add_argument("--url", default=None, help="an image URL or data: URI")
     ic.set_defaults(func=cmd_icon)
+
+    at = sub.add_parser("attach", help="send an image or file to the app")
+    at.add_argument("--file", default=None, help="local file to upload and send")
+    at.add_argument("--url", default=None, help="reference an already-hosted URL instead")
+    at.add_argument("--name", default=None, help="display name (with --url)")
+    at.add_argument("--mime", default=None, help="MIME type (with --url)")
+    at.add_argument("--text", default=None, help="optional caption")
+    at.set_defaults(func=cmd_attach)
 
     w = sub.add_parser("wait", help="block for the next complete user message")
     w.add_argument("--timeout", type=int, default=50,
