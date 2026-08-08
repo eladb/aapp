@@ -53,11 +53,13 @@ pass `--force` to rotate.) Default relay is `https://ntfy.sh`; override with
 The phone app is a single static file. Pick whichever hosting fits — the same
 `app.html` works from any host because the session travels in the URL fragment.
 
-- **Public GitHub repo → jsDelivr (no build, recommended in cloud sessions).**
-  Commit `app.html`, then:
-  `https://cdn.jsdelivr.net/gh/<owner>/<repo>@<commit-sha>/<path>/app.html`
-  Use a **commit SHA** (not a branch) so slashes in branch names don't break
-  the path and the CDN never serves a stale copy. See `reference/hosting.md`.
+- **Public GitHub repo → githack (no build, recommended in cloud sessions).**
+  Commit `app.html`, push, then use the commit SHA:
+  `https://rawcdn.githack.com/<owner>/<repo>/<sha>/<path>/app.html`
+  Get the SHA with `git rev-parse HEAD`. Use a **commit SHA** (not a branch) so
+  slashes in branch names don't break the path and the CDN can't serve a stale
+  copy. (Don't use jsDelivr for this — it serves `.html` as `text/plain`, so the
+  browser shows source instead of rendering the app.) See `reference/hosting.md`.
 - **GitHub Pages / Netlify / any static host.** Drop `app.html` there.
 - **Local machine with open egress:** serve it yourself and expose with a
   tunnel — `python3 scripts/serve.py` prints instructions (uses `cloudflared`

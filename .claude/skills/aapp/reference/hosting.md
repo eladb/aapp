@@ -9,23 +9,29 @@ session** — you host it once and only the `#…` changes.
 
 Pick the first option that fits the environment.
 
-## 1. Public GitHub repo → jsDelivr  (recommended for cloud sessions)
+## 1. Public GitHub repo → githack  (recommended for cloud sessions)
 
 No build, no settings toggles, instant.
 
 1. Commit `app.html` to a **public** repo and push.
 2. Get the commit SHA: `git rev-parse HEAD`.
 3. URL:
-   `https://cdn.jsdelivr.net/gh/<owner>/<repo>@<sha>/<path/to>/app.html`
+   `https://rawcdn.githack.com/<owner>/<repo>/<sha>/<path/to>/app.html`
 
-Use the **commit SHA** as the version, not a branch name:
-- branch names containing `/` (e.g. `claude/foo`) break jsDelivr's `@ref/path`
+Use the **commit SHA**, not a branch name:
+- branch names containing `/` (e.g. `claude/foo`) break the `/<ref>/<path>`
   parsing;
 - a SHA is immutable, so the CDN can't serve a stale shell.
 
-jsDelivr serves repo files as their real content-type (`text/html`) and adds no
-blocking CSP, so the app's `fetch()` to ntfy works. `raw.githack.com` works the
-same way if you prefer live-from-branch serving.
+githack serves repo files with their real `text/html` content-type and adds no
+blocking CSP, so the app's `fetch()` to ntfy works. Two hosts: `rawcdn.githack.com`
+(production, long cache — use this for a stable link) and `raw.githack.com`
+(dev, short cache — handy while iterating).
+
+> **Don't use jsDelivr here.** jsDelivr deliberately serves `.html` as
+> `text/plain` with `X-Content-Type-Options: nosniff` (anti-abuse), so the
+> browser displays the source instead of running the app. It's great for JS/CSS
+> assets, wrong for an HTML page.
 
 ## 2. GitHub Pages / Netlify / Vercel / any static host
 
