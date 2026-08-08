@@ -680,6 +680,18 @@ def cmd_status(args):
     print(json.dumps({"status": text[:80]}))
 
 
+def cmd_title(args):
+    state = require_state(args)
+    text = args.text
+    if text == "-" or text is None:
+        text = sys.stdin.read()
+    text = text.strip()
+    if not text:
+        sys.exit("provide --text")
+    send_signal(state, "title", text=text)
+    print(json.dumps({"title": text[:80]}))
+
+
 def cmd_icon(args):
     state = require_state(args)
     fields = {}
@@ -758,6 +770,10 @@ def build_parser():
     st = sub.add_parser("status", help="send a transient status line")
     st.add_argument("--text", default=None)
     st.set_defaults(func=cmd_status)
+
+    tt = sub.add_parser("title", help="set the app title/name shown in the header")
+    tt.add_argument("--text", default=None, help="the display name, or '-' for stdin")
+    tt.set_defaults(func=cmd_title)
 
     ic = sub.add_parser("icon", help="set the app icon/favicon (emoji or image url)")
     ic.add_argument("--emoji", default=None, help="an emoji to use as the icon")
