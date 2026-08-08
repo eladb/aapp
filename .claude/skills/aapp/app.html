@@ -89,6 +89,20 @@
   /* system / status lines */
   .sys{align-self:center; font-size:12.5px; color:var(--muted); background:color-mix(in srgb,var(--bg2) 70%,transparent); padding:4px 12px; border-radius:999px; border:1px solid var(--line); max-width:90%; text-align:center}
   .daysep{align-self:center; font-size:11px; color:var(--muted); letter-spacing:.04em; text-transform:uppercase; margin:8px 0 2px}
+  .bubble.failed{outline:1.5px solid var(--err); outline-offset:0}
+  /* activity feed (session transcript, summaries only) */
+  .act{align-self:stretch; display:flex; gap:8px; align-items:flex-start; font-size:12.5px; color:var(--muted); padding:2px 6px; margin:0 auto; max-width:820px; width:100%; opacity:.9}
+  .act .ai{flex:0 0 auto; width:18px; text-align:center; opacity:.9}
+  .act .ax{flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid var(--line); padding-left:8px}
+  .act.assistant .ax{color:color-mix(in srgb,var(--ink) 72%,transparent)}
+  .act.tool .ax{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px}
+  .act.user .ax{color:color-mix(in srgb,var(--accent) 90%,var(--ink))}
+  body.hide-activity .act{display:none}
+  .toggle{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px; border:1px solid var(--line); border-radius:12px; margin-bottom:10px; font-weight:600}
+  .switch{width:46px; height:28px; border-radius:999px; background:var(--line); position:relative; transition:.2s; flex:0 0 auto}
+  .switch.on{background:var(--accent)}
+  .switch::after{content:""; position:absolute; top:3px; left:3px; width:22px; height:22px; border-radius:50%; background:#fff; transition:.2s}
+  .switch.on::after{left:21px}
   /* typing */
   .typing{display:inline-flex; gap:4px; padding:12px 14px}
   .typing i{width:7px; height:7px; border-radius:50%; background:var(--muted); animation:blink 1.2s infinite}
@@ -177,6 +191,8 @@
     <button class="btn primary" id="shareBtn">Share link</button>
     <button class="btn" id="copyBtn">Copy</button>
   </div>
+  <div class="toggle" id="actToggle">Show session activity<span class="switch" id="actSwitch"></span></div>
+  <div class="hint">The activity feed shows the agent's steps and tool calls from this session. Off hides them on this device only.</div>
   <div class="hint" id="a2hs">On iPhone: tap the <b>Share</b> icon in Safari, then <b>Add to Home Screen</b> to install this chat as an app.</div>
   <div class="row-btns">
     <button class="btn danger" id="clearBtn">Clear history</button>
@@ -245,10 +261,16 @@
   function renderInline(s){
     // s is already HTML-escaped
     s = s.replace(/`([^`\n]+?)`/g, function(_,c){ return '<code class="inline">'+c+'</code>'; });
+    // Links in ONE left-to-right pass: [text](url) OR a bare url. Doing both in
+    // a single alternation means a markdown link's url is never also autolinked
+    // (and a bare url never mistaken for link text).
+    s = s.replace(/\[([^\]]+?)\]\((https?:\/\/[^)\s]+)\)|(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g,
+      function(m, t, u1, u2){
+        if(u1!=null) return '<a href="'+safeUrl(u1)+'" target="_blank" rel="noopener noreferrer">'+t+'</a>';
+        return '<a href="'+safeUrl(u2)+'" target="_blank" rel="noopener noreferrer">'+u2+'</a>';
+      });
     s = s.replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>");
     s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
-    s = s.replace(/\b(https?:\/\/[^\s<]+[^\s<.,;:!?)\]])/g, function(u){ return '<a href="'+safeUrl(u)+'" target="_blank" rel="noopener noreferrer">'+u+'</a>'; });
-    s = s.replace(/\[([^\]]+?)\]\((https?:\/\/[^)\s]+)\)/g, function(_,t,u){ return '<a href="'+safeUrl(u)+'" target="_blank" rel="noopener noreferrer">'+t+'</a>'; });
     return s;
   }
   function renderMarkdown(text){
@@ -304,31 +326,57 @@
     row.appendChild(b);
     return row;
   }
+  function daySep(ts){ var sep=document.createElement("div"); sep.className="daysep"; sep.textContent=fmtDay(ts); return sep; }
+  function makeSys(m){ var s=document.createElement("div"); s.className="sys"; s.dataset.mid=m.mid; s.textContent=m.text; return s; }
+  function makeActivity(m){
+    var d=document.createElement("div"); d.className="act "+(m.kind||"tool"); d.dataset.mid=m.mid;
+    var ai=document.createElement("div"); ai.className="ai"; ai.textContent = m.kind==="assistant" ? "◈" : "";
+    var ax=document.createElement("div"); ax.className="ax"; ax.textContent=m.text;
+    d.appendChild(ai); d.appendChild(ax); return d;
+  }
+  function makeItem(m){
+    if(m.type==="system") return makeSys(m);
+    if(m.type==="activity") return makeActivity(m);
+    return makeRow(m);
+  }
   function renderAll(){
     clearView();
     var lastDay=null;
     messages.forEach(function(m){
-      if(m.type==="system"){ var s=document.createElement("div"); s.className="sys"; s.textContent=m.text; listEl.appendChild(s); return; }
-      var dk=dayKey(m.ts);
-      if(dk!==lastDay){ lastDay=dk; var sep=document.createElement("div"); sep.className="daysep"; sep.textContent=fmtDay(m.ts); listEl.appendChild(sep); }
-      listEl.appendChild(makeRow(m));
+      if(m.type==="msg"){ var dk=dayKey(m.ts); if(dk!==lastDay){ lastDay=dk; listEl.appendChild(daySep(m.ts)); } }
+      listEl.appendChild(makeItem(m));
     });
     emptyEl.style.display = messages.length ? "none" : "";
     scrollToBottom(true);
   }
   function upsertRow(m){
     emptyEl.style.display="none";
-    var existing=listEl.querySelector('.row[data-mid="'+cssEsc(m.mid)+'"]');
-    if(existing){ existing.querySelector(".bubble").innerHTML=bubbleHTML(m); }
-    else{
-      // day separator if needed
-      var last=messages[messages.length-2];
-      if(!last || dayKey(last.ts)!==dayKey(m.ts)){ var sep=document.createElement("div"); sep.className="daysep"; sep.textContent=fmtDay(m.ts); listEl.appendChild(sep); }
-      listEl.appendChild(makeRow(m));
+    var existing=listEl.querySelector('[data-mid="'+cssEsc(m.mid)+'"]');
+    if(existing){
+      if(m.type==="msg"){ existing.querySelector(".bubble").innerHTML=bubbleHTML(m); }
+      else if(m.type==="system"){ existing.textContent=m.text; }
+      else if(m.type==="activity"){ var ax=existing.querySelector(".ax"); if(ax) ax.textContent=m.text; }
+    } else {
+      if(m.type==="msg"){
+        var last=null;
+        for(var i=messages.length-2;i>=0;i--){ if(messages[i].type==="msg"){ last=messages[i]; break; } }
+        if(!last || dayKey(last.ts)!==dayKey(m.ts)){ listEl.appendChild(daySep(m.ts)); }
+      }
+      listEl.appendChild(makeItem(m));
     }
-    if(atBottom) scrollToBottom(); else bumpUnread();
+    if(atBottom) scrollToBottom(); else if(m.type==="msg") bumpUnread();
   }
   function cssEsc(s){ return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^\w-]/g,"_"); }
+  function pruneMemory(){
+    if(messages.length>600){
+      var drop=messages.length-400;
+      for(var i=0;i<drop;i++){ var old=messages[i]; if(old){ delete byId[old.mid]; delete seenParts[old.mid]; delete seenAct[old.mid]; } }
+      messages.splice(0,drop);
+      renderAll();
+    }
+    var ks=Object.keys(seenNtfy);
+    if(ks.length>4000){ for(var j=0;j<ks.length-2000;j++) delete seenNtfy[ks[j]]; }
+  }
 
   function addSystem(text, ts){
     var m={mid:"sys-"+Math.random().toString(36).slice(2), role:"system", type:"system", text:text, ts:ts||Date.now(), done:true};
@@ -385,6 +433,7 @@
     var role=env.role, type=env.type||"msg";
     if(type==="typing"){ if(role!=="user") setTyping(env.state==="on"); return; }
     if(type==="status"){ if(role!=="user") showStatus(env.text); return; }
+    if(type==="activity"){ addActivity(env, ntfyId); return; }
     if(role==="user" && type==="msg"){
       // our own user messages already shown optimistically; show if from elsewhere
     }
@@ -404,7 +453,14 @@
     m.text=Object.keys(m._parts).map(Number).sort(function(a,b){return a-b;}).map(function(k){return m._parts[k];}).join("");
     if(env.last) m.done=true;
     if(role==="agent" && type==="msg") setTyping(false);
-    upsertRow(m); save();
+    upsertRow(m); save(); pruneMemory();
+  }
+  var seenAct={};
+  function addActivity(env, ntfyId){
+    var mid=env.mid || ntfyId; if(!mid || seenAct[mid]) return; seenAct[mid]=true;
+    var m={mid:mid, role:"activity", type:"activity", kind:env.kind||"tool", text:env.text||"", ts:env.ts||Date.now(), done:true};
+    byId[mid]=m; messages.push(m);
+    upsertRow(m); save(); pruneMemory();
   }
   function showStatus(text){
     if(!text) return;
@@ -463,8 +519,10 @@
   // polling fallback if streaming bodies unsupported
   async function pollLoop(){
     while(!stopped){
+      if(!navigator.onLine){ setConnected("offline"); await once("online"); continue; }
       try{
         var resp=await fetch(server+"/"+encodeURIComponent(topic)+"/json?poll=1&since="+encodeURIComponent(cursor),{cache:"no-store"});
+        if(!resp.ok) throw new Error("poll "+resp.status);
         var txt=await resp.text(); setConnected("live"); backoff=1000;
         txt.split("\n").forEach(processLine);
       }catch(e){ setConnected("reconnecting"); }
@@ -481,22 +539,48 @@
   window.addEventListener("offline", function(){ setConnected("offline"); });
 
   // ---------- sending ----------
-  function envelope(text){
-    return {v:1, cid:CID, role:"user", type:"msg", mid:"u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6), seq:0, last:true, text:text, ts:Date.now()};
+  var TE = (typeof TextEncoder!=="undefined") ? new TextEncoder() : null;
+  function byteLen(s){ return TE ? TE.encode(s).length : unescape(encodeURIComponent(s)).length; }
+  // Byte-aware chunking that mirrors bridge.py: measure each code point as it
+  // serializes on the wire (JSON escapes non-ASCII to \uXXXX), keep each
+  // envelope < ~3KB so ntfy never rejects/attaches an oversized body.
+  function makeEnvelopes(text){
+    var mid="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    var skeleton={v:1,cid:CID,role:"user",type:"msg",mid:mid,seq:0,last:true,text:"",ts:Date.now()};
+    var overhead=byteLen(JSON.stringify(skeleton))+8;
+    var budget=Math.max(200, 3000-overhead);
+    var parts=[], cur="", curB=0;
+    for(var ch of text){
+      var b=byteLen(JSON.stringify(ch))-2;
+      if(curB+b>budget && cur){ parts.push(cur); cur=""; curB=0; }
+      cur+=ch; curB+=b;
+    }
+    parts.push(cur);
+    var envs=parts.map(function(p,i){ return {v:1,cid:CID,role:"user",type:"msg",mid:mid,seq:i,last:i===parts.length-1,text:p,ts:Date.now()}; });
+    return {mid:mid, envs:envs};
   }
   async function publish(env){
-    var body=JSON.stringify(env);
-    await fetch(server+"/"+encodeURIComponent(topic), {method:"POST", body:body, headers:{"Content-Type":"application/json","Title":"aapp"}});
+    var resp=await fetch(server+"/"+encodeURIComponent(topic), {method:"POST", body:JSON.stringify(env), headers:{"Content-Type":"application/json","Title":"aapp"}});
+    if(!resp || !resp.ok) throw new Error("publish failed "+(resp&&resp.status));
+    return resp;
   }
   async function sendMessage(){
     var text=inputEl.value.trim(); if(!text || !topic) return;
-    var env=envelope(text);
-    var m={mid:env.mid, role:"user", type:"msg", text:text, ts:env.ts, done:true, _parts:{0:text}};
-    byId[m.mid]=m; messages.push(m); seenParts[m.mid]=new Set([0]);
+    var built=makeEnvelopes(text);
+    var m={mid:built.mid, role:"user", type:"msg", text:text, ts:Date.now(), done:true, _parts:{0:text}};
+    byId[m.mid]=m; messages.push(m);
+    // mark every part id as already-seen so ntfy echoes are ignored (the cid
+    // check also guards this, but be explicit)
+    seenParts[m.mid]=new Set(built.envs.map(function(_,i){return i;}));
     upsertRow(m); save();
     inputEl.value=""; autoGrow(); sendEl.disabled=true;
-    try{ await publish(env); }
-    catch(e){ addSystem("⚠︎ Message failed to send — check your connection."); }
+    try{
+      for(var i=0;i<built.envs.length;i++){ await publish(built.envs[i]); }
+    }catch(e){
+      var b=listEl.querySelector('.row[data-mid="'+cssEsc(m.mid)+'"] .bubble');
+      if(b) b.classList.add("failed");
+      addSystem("⚠︎ Message failed to send — check your connection and try again.");
+    }
     inputEl.focus();
   }
   sendEl.addEventListener("click", sendMessage);
@@ -517,9 +601,20 @@
     if(navigator.share){ try{ await navigator.share({title:name||"Agent chat", url:location.href}); }catch(e){} }
     else{ copyText(location.href); toast("Link copied"); }
   });
+  var showActivity=true;
+  try{ showActivity = (localStorage.getItem("aapp:showActivity")!=="0"); }catch(e){}
+  function applyActivityPref(){
+    document.body.classList.toggle("hide-activity", !showActivity);
+    var sw=$("actSwitch"); if(sw) sw.classList.toggle("on", showActivity);
+  }
+  $("actToggle").addEventListener("click", function(){
+    showActivity=!showActivity;
+    try{ localStorage.setItem("aapp:showActivity", showActivity?"1":"0"); }catch(e){}
+    applyActivityPref();
+  });
   $("clearBtn").addEventListener("click", function(){
     if(!confirm("Clear this conversation on this device? (The session itself is unaffected.)")) return;
-    messages=[]; byId={}; seenParts={}; try{ localStorage.removeItem(STORE); }catch(e){}
+    messages=[]; byId={}; seenParts={}; seenAct={}; seenNtfy={}; try{ localStorage.removeItem(STORE); }catch(e){}
     renderAll(); closeSheet(); toast("History cleared");
   });
 
@@ -561,6 +656,7 @@
     return;
   }
   load();
+  applyActivityPref();
   renderAll();
   autoGrow();
   (supportsStreaming()?streamLoop:pollLoop)();

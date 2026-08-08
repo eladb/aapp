@@ -40,9 +40,12 @@ session; the agent's replies stream back into the app.
 ### 1. Create the session
 
 ```bash
-export AAPP_STATE="$AAPP_HOME_OR_SCRATCH/aapp/session.json"   # any writable path
+export AAPP_STATE="${TMPDIR:-/tmp}/aapp/session.json"   # any writable path
 python3 .claude/skills/aapp/scripts/bridge.py new
 ```
+
+(If you skip the `export`, `bridge.py` falls back to `$TMPDIR/aapp/session.json`
+on its own — just keep the same `AAPP_STATE` for every command in the session.)
 
 This mints a random topic and stores it. (Re-running reuses the same session;
 pass `--force` to rotate.) Default relay is `https://ntfy.sh`; override with
@@ -62,8 +65,9 @@ The phone app is a single static file. Pick whichever hosting fits — the same
   browser shows source instead of rendering the app.) See `reference/hosting.md`.
 - **GitHub Pages / Netlify / any static host.** Drop `app.html` there.
 - **Local machine with open egress:** serve it yourself and expose with a
-  tunnel — `python3 scripts/serve.py` prints instructions (uses `cloudflared`
-  if present). See `reference/hosting.md`.
+  tunnel — `python3 scripts/serve.py` serves the file and prints a ready-to-run
+  `cloudflared tunnel` command you then run in another shell. See
+  `reference/hosting.md`.
 
 Store the resulting URL so the link builder can use it:
 
@@ -113,6 +117,30 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
 4. **Re-launch the wait** and continue. On a timeout with no message (exit 22),
    just start another wait. Keep going until the user says to stop, then send a
    final message and end the loop.
+
+### Optional: stream the whole session as an activity feed
+
+If the user wants the chat to show **everything happening in the session** (the
+model's messages, each tool call, and terminal-side user turns) — not just your
+explicit replies — run the transcript tailer in the background:
+
+```bash
+python3 .claude/skills/aapp/scripts/bridge.py tail \
+  --transcript "<path to this session's .jsonl>" --from end
+```
+
+It publishes **summaries only** — assistant messages, compact tool-call lines
+(`🔧 Edit app.html`, `🔧 Bash: …`), and real user turns. It deliberately
+**omits** raw tool outputs, file contents, and chain-of-thought, and skips the
+bridge's own plumbing. The app renders these as a distinct muted **activity**
+feed with a per-device on/off toggle (Settings → *Show session activity*).
+
+> ⚠️ **Confirm first.** This exposes the session's commands and steps to
+> everyone holding the link. Get the user's explicit OK before enabling it, and
+> keep it to the summaries-only default rather than dumping full outputs.
+
+The transcript path is the session JSONL (in Claude Code, typically under
+`~/.claude/projects/<project>/<session-id>.jsonl`).
 
 ### Etiquette for a good mobile chat
 

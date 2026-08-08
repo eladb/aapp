@@ -26,7 +26,8 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system",
+  "type": "msg" | "typing" | "status" | "system" | "activity",
+  "kind": "assistant" | "tool" | "user",   // for type=activity only
   "mid": "u1a2b3c",           // logical message id (groups multi-part messages)
   "seq": 0,                    // 0-based part index
   "last": true,                // true on the final part of a message
@@ -47,6 +48,11 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
 - **`status`** — a transient one-line status (e.g. "running tests…"), shown
   briefly and not kept in history.
 - **`system`** — a persistent centered notice (e.g. an error banner).
+- **`activity`** — one line of session activity (from `bridge.py tail`), with a
+  `kind` of `assistant` (a model message), `tool` (a compact tool-call summary),
+  or `user` (a terminal-side user turn). Rendered as a distinct muted feed,
+  separate from chat bubbles, and hideable per-device. Summaries only — never
+  raw tool output or file contents.
 
 ### Rules
 

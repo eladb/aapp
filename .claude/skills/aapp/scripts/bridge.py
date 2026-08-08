@@ -76,8 +76,12 @@ def load_state(path):
 
 
 def save_state(path, state):
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    tmp = path + ".tmp"
+    d = os.path.dirname(path)
+    if d:
+        os.makedirs(d, exist_ok=True)
+    # process-unique temp name so concurrent writers don't clobber each other's
+    # partial writes before their own atomic rename
+    tmp = "%s.tmp.%d" % (path, os.getpid())
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(tmp, path)
@@ -167,7 +171,11 @@ def chunk_text(text, overhead):
     cur = []
     cur_bytes = 0
     for ch in text:
-        b = len(ch.encode("utf-8"))
+        # Measure the char as it will appear on the wire: the envelope is
+        # serialized with json.dumps(ensure_ascii=True), so a non-ASCII char
+        # becomes \uXXXX (6 bytes) or a surrogate pair (12), and quotes/newlines
+        # double. len(json.dumps(ch)) - 2 strips the surrounding quotes.
+        b = len(json.dumps(ch)) - 2
         if cur_bytes + b > budget and cur:
             parts.append("".join(cur))
             cur = []
@@ -245,15 +253,18 @@ def parse_ntfy_line(line):
     return nid, env
 
 
-def stream_messages(state, since, timeout, on_id=None):
-    """Yield (ntfy_id, envelope) from the ntfy stream until timeout seconds
-    pass with no traffic. ntfy sends keepalives (~45s) so an idle connection
-    stays open; `timeout` bounds the wait for the *next byte*, and an overall
-    deadline bounds total wall time."""
+def stream_messages(state, since, timeout, on_id=None, deadline=None):
+    """Yield (ntfy_id, envelope) from the ntfy stream. ntfy sends keepalives
+    (~45s) so an idle connection stays open; `timeout` bounds the wait for the
+    *next byte*. `deadline` (epoch seconds) is re-checked on every line —
+    including keepalives — so an overall wall-clock bound is actually honored
+    even when the connection never falls idle."""
     url = "%s/%s/json?since=%s" % (state["server"].rstrip("/"), state["topic"], since)
     resp = http_open(url, timeout=timeout)
     try:
         for raw in resp:
+            if deadline is not None and time.time() >= deadline:
+                return
             nid, env = parse_ntfy_line(
                 raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
             )
@@ -277,6 +288,7 @@ def wait_for_user_message(state, args):
     # Buffers for reassembling multi-part user messages keyed by mid.
     buffers = {}
     seen_seq = {}
+    expected_total = {}
 
     def remember(nid):
         state["last_id"] = nid
@@ -285,7 +297,8 @@ def wait_for_user_message(state, args):
         remaining = max(1, int(deadline - time.time()))
         read_timeout = min(remaining, 55)  # < ntfy keepalive gap, bounded
         try:
-            for nid, env in stream_messages(state, since, read_timeout, on_id=remember):
+            for nid, env in stream_messages(state, since, read_timeout,
+                                            on_id=remember, deadline=deadline):
                 since = nid or since
                 if env.get("role") != "user":
                     continue
@@ -296,15 +309,25 @@ def wait_for_user_message(state, args):
                         return {"type": mtype, "env": env}
                     continue
                 mid = env.get("mid") or nid
-                seq = int(env.get("seq", 0))
+                # Tolerate malformed/hostile envelopes: a bad seq skips the part
+                # rather than crashing the whole wait loop.
+                try:
+                    seq = int(env.get("seq", 0))
+                except (TypeError, ValueError):
+                    continue
                 seen = seen_seq.setdefault(mid, set())
                 if seq in seen:
                     continue
                 seen.add(seq)
                 buffers.setdefault(mid, {})[seq] = env.get("text", "")
                 if env.get("last"):
-                    ordered = [buffers[mid][k] for k in sorted(buffers[mid])]
-                    text = "".join(ordered)
+                    expected_total[mid] = seq + 1
+                total = expected_total.get(mid)
+                # Only complete once every part 0..total-1 is present, so an
+                # out-of-order or partial multi-part message isn't concatenated
+                # with gaps.
+                if total is not None and all(i in buffers[mid] for i in range(total)):
+                    text = "".join(buffers[mid][i] for i in range(total))
                     save_state(args.state, state)
                     return {
                         "type": "msg",
@@ -339,6 +362,178 @@ def history(state):
 
 
 # --------------------------------------------------------------------------
+# activity feed -- follow the session transcript, publish SUMMARIES ONLY
+# (assistant messages, compact tool-call lines, real user turns). Raw tool
+# outputs and file bodies are deliberately excluded to limit what a public
+# link exposes.
+# --------------------------------------------------------------------------
+ACT_MAX_TEXT = 600  # truncate any activity line to keep envelopes small & terse
+
+
+def _first_line(s, n):
+    s = (s or "").strip().splitlines()
+    s = s[0] if s else ""
+    return s[:n]
+
+
+def _basename(p):
+    return (p or "").rstrip("/").split("/")[-1] or (p or "")
+
+
+def tool_summary(name, inp):
+    """A short, safe one-liner for a tool call. Never includes file contents,
+    edit bodies, or full command output."""
+    if not isinstance(inp, dict):
+        inp = {}
+    if name == "Bash":
+        cmd = inp.get("command", "")
+        low = cmd.lower()
+        # don't echo the chat plumbing back into the feed
+        if "bridge.py" in low or "aapp-live" in low or "aapp/session" in low:
+            return None
+        return "🔧 Bash: " + _first_line(cmd, 140)
+    if name in ("Edit", "Write", "NotebookEdit"):
+        return "🔧 %s: %s" % (name, _basename(inp.get("file_path") or inp.get("notebook_path")))
+    if name == "Read":
+        return "📄 Read: " + _basename(inp.get("file_path"))
+    if name in ("Grep", "Glob"):
+        return "🔎 %s: %s" % (name, _first_line(inp.get("pattern") or inp.get("glob") or "", 80))
+    if name in ("Task", "Agent"):
+        return "🤖 %s: %s" % (name, _first_line(inp.get("description") or "", 80))
+    if name == "Workflow":
+        return "🧩 Workflow: " + _first_line(inp.get("description") or "", 80)
+    if name in ("TaskCreate", "TaskUpdate"):
+        return None  # internal bookkeeping -- too noisy for the feed
+    return "🔧 " + str(name)
+
+
+def summarize_event(o):
+    """Yield (kind, text) activity items for one transcript line."""
+    if not isinstance(o, dict):
+        return
+    if o.get("type") not in ("assistant", "user"):
+        return
+    msg = o.get("message") if isinstance(o.get("message"), dict) else None
+    if not msg:
+        return
+    role = msg.get("role")
+    content = msg.get("content")
+    if isinstance(content, str):
+        if role == "user" and content.strip():
+            yield ("user", content.strip()[:ACT_MAX_TEXT])
+        return
+    if not isinstance(content, list):
+        return
+    # a user turn that carries any tool_result is a tool response -> skip whole
+    if role == "user" and any(isinstance(c, dict) and c.get("type") == "tool_result" for c in content):
+        return
+    for c in content:
+        if not isinstance(c, dict):
+            continue
+        ct = c.get("type")
+        if ct == "text" and c.get("text", "").strip():
+            yield (role, c["text"].strip()[:ACT_MAX_TEXT])
+        elif ct == "tool_use" and role == "assistant":
+            line = tool_summary(c.get("name"), c.get("input"))
+            if line:
+                yield ("tool", line[:ACT_MAX_TEXT])
+        # thinking / tool_result intentionally omitted
+
+
+def publish_activity(sess, cid, kind, text):
+    env = {
+        "v": PROTOCOL_VERSION,
+        "cid": cid,
+        "role": "agent",
+        "type": "activity",
+        "kind": kind,
+        "mid": "act-" + uuid.uuid4().hex[:12],
+        "seq": 0,
+        "last": True,
+        "text": text,
+        "ts": now_ms(),
+    }
+    # keep the whole envelope well under the relay limit
+    while len(json.dumps(env, separators=(",", ":")).encode("utf-8")) > 3500 and env["text"]:
+        env["text"] = env["text"][: max(1, len(env["text"]) // 2)]
+    publish_envelope(sess["server"], sess["topic"], env)
+
+
+def tail_transcript(state, args):
+    path = args.transcript
+    cid = "tail-" + uuid.uuid4().hex[:8]
+    # Where to start: end (only new activity) or start (replay everything).
+    try:
+        size = os.path.getsize(path)
+    except OSError:
+        size = 0
+    if args.from_ == "start":
+        pos = 0
+    else:
+        pos = size
+    if args.backfill and pos > 0:
+        # rewind roughly N lines by scanning back from the end
+        try:
+            with open(path, "rb") as f:
+                f.seek(0)
+                data = f.read(pos)
+            nl = data.rfind(b"\n")
+            count = 0
+            i = len(data)
+            while count <= args.backfill and i > 0:
+                i = data.rfind(b"\n", 0, i)
+                if i < 0:
+                    i = 0
+                    break
+                count += 1
+            pos = i
+        except OSError:
+            pass
+    buf = ""
+    published = 0
+    deadline = time.time() + args.timeout if args.timeout else None
+    while True:
+        if deadline and time.time() > deadline:
+            break
+        try:
+            cur = os.path.getsize(path)
+        except OSError:
+            time.sleep(args.interval)
+            continue
+        if cur < pos:  # file truncated/rotated -> restart
+            pos = 0
+            buf = ""
+        if cur > pos:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                f.seek(pos)
+                chunk = f.read()
+                pos = f.tell()
+            buf += chunk
+            while "\n" in buf:
+                line, buf = buf.split("\n", 1)
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    o = json.loads(line)
+                except ValueError:
+                    continue
+                for kind, text in summarize_event(o):
+                    if not text:
+                        continue
+                    try:
+                        publish_activity(state, cid, kind, text)
+                        published += 1
+                        time.sleep(args.throttle)  # be nice to the relay
+                    except Exception:
+                        pass
+        if args.once:
+            break
+        time.sleep(args.interval)
+    return published
+
+
+# --------------------------------------------------------------------------
 # link
 # --------------------------------------------------------------------------
 def build_link(state, app_url=None, name=None):
@@ -351,8 +546,9 @@ def build_link(state, app_url=None, name=None):
     frag = "s=%s&t=%s" % (state["server"].rstrip("/"), state["topic"])
     if name:
         frag += "&n=" + urllib.request.quote(name)
-    sep = "" if "#" in app_url else "#"
-    return app_url + sep + frag
+    # drop any pre-existing fragment so we always emit exactly one clean one
+    base = app_url.split("#", 1)[0]
+    return base + "#" + frag
 
 
 # --------------------------------------------------------------------------
@@ -397,7 +593,8 @@ def cmd_send(args):
             send_signal(state, "typing", state="off")
         except Exception:
             pass
-    save_state(args.state, state)
+    # note: cmd_send intentionally does NOT save_state -- it does not own the
+    # read cursor (last_id), and writing here would race a concurrent `wait`.
     print(json.dumps({"mid": mid, "parts": total}))
 
 
@@ -438,6 +635,14 @@ def cmd_history(args):
     state = require_state(args)
     for env in history(state):
         print(json.dumps(env))
+
+
+def cmd_tail(args):
+    state = require_state(args)
+    if not args.transcript or not os.path.exists(args.transcript):
+        sys.exit("transcript not found: %s" % args.transcript)
+    n = tail_transcript(state, args)
+    print(json.dumps({"published": n}))
 
 
 def build_parser():
@@ -485,6 +690,19 @@ def build_parser():
 
     h = sub.add_parser("history", help="dump cached messages as JSON lines")
     h.set_defaults(func=cmd_history)
+
+    ta = sub.add_parser("tail", help="stream a session transcript as an activity feed (summaries only)")
+    ta.add_argument("--transcript", required=True,
+                    help="path to the session .jsonl transcript to follow")
+    ta.add_argument("--from", dest="from_", default="end", choices=["end", "start"],
+                    help="start at end (only new activity, default) or start (replay)")
+    ta.add_argument("--backfill", type=int, default=0,
+                    help="when starting at end, first replay the last N transcript lines")
+    ta.add_argument("--interval", type=float, default=1.0, help="poll interval seconds")
+    ta.add_argument("--throttle", type=float, default=0.25, help="seconds between publishes")
+    ta.add_argument("--timeout", type=int, default=0, help="stop after N seconds (0 = run until killed)")
+    ta.add_argument("--once", action="store_true", help="process current backlog then exit")
+    ta.set_defaults(func=cmd_tail)
     return p
 
 
@@ -496,6 +714,8 @@ def main():
         sys.exit("HTTP error: %s %s" % (e.code, e.reason))
     except urllib.error.URLError as e:
         sys.exit("network error: %s" % e.reason)
+    except ValueError as e:
+        sys.exit("message error: %s" % e)
 
 
 if __name__ == "__main__":
