@@ -262,12 +262,14 @@ def parse_ntfy_line(line):
     return nid, env
 
 
-def stream_messages(state, since, timeout, on_id=None, deadline=None):
-    """Yield (ntfy_id, envelope) from the ntfy stream. ntfy sends keepalives
-    (~45s) so an idle connection stays open; `timeout` bounds the wait for the
-    *next byte*. `deadline` (epoch seconds) is re-checked on every line —
-    including keepalives — so an overall wall-clock bound is actually honored
-    even when the connection never falls idle."""
+def stream_messages(state, since, timeout, deadline=None):
+    """Yield (ntfy_id, envelope) for real MESSAGE events on the ntfy stream.
+    ntfy sends keepalive/open events (~45s) so an idle connection stays open;
+    those are skipped and never yielded, so callers only ever advance their
+    cursor to real message ids (keepalive ids are not valid `since=` cursors and
+    would make ntfy replay the whole cache). `timeout` bounds the wait for the
+    next byte; `deadline` (epoch seconds) is re-checked on every line so an
+    overall wall-clock bound holds even when only keepalives arrive."""
     url = "%s/%s/json?since=%s" % (state["server"].rstrip("/"), state["topic"], since)
     resp = http_open(url, timeout=timeout)
     try:
@@ -277,8 +279,6 @@ def stream_messages(state, since, timeout, on_id=None, deadline=None):
             nid, env = parse_ntfy_line(
                 raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
             )
-            if nid and on_id:
-                on_id(nid)
             if env is not None:
                 yield nid, env
     finally:
@@ -299,16 +299,16 @@ def wait_for_user_message(state, args):
     seen_seq = {}
     expected_total = {}
 
-    def remember(nid):
-        state["last_id"] = nid
-
     while time.time() < deadline:
         remaining = max(1, int(deadline - time.time()))
         read_timeout = min(remaining, 55)  # < ntfy keepalive gap, bounded
         try:
-            for nid, env in stream_messages(state, since, read_timeout,
-                                            on_id=remember, deadline=deadline):
-                since = nid or since
+            for nid, env in stream_messages(state, since, read_timeout, deadline=deadline):
+                # advance the cursor ONLY on real message ids (keepalive ids are
+                # not valid `since=` cursors)
+                if nid:
+                    since = nid
+                    state["last_id"] = nid
                 if env.get("role") != "user":
                     continue
                 mtype = env.get("type", "msg")
