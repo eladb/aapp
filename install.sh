@@ -47,6 +47,15 @@ LINK="$(python3 "$DEST/scripts/bridge.py" link --name-from-session)"
 python3 "$DEST/scripts/bridge.py" send \
   --text "👋 Connected to your Claude Code session. Send me anything." >/dev/null 2>&1 || true
 
+# Start the session activity feed (summaries only) in the background so the app
+# shows what the agent is doing by default. Transcript is auto-detected.
+if ! pgrep -f "bridge.py tail" >/dev/null 2>&1; then
+  nohup python3 "$DEST/scripts/bridge.py" tail --from end --backfill 40 \
+    >/dev/null 2>&1 &
+  disown 2>/dev/null || true
+  echo "  ✓ session activity feed streaming"
+fi
+
 echo
 echo "✅ Your shareable link — open on your phone, then Add to Home Screen:"
 echo

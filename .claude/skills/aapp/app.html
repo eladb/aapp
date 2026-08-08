@@ -101,6 +101,13 @@
   .bubble pre code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   .copy{position:absolute; top:6px; right:6px; font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid hsl(0 0% 100%/0.15); background:hsl(0 0% 100%/0.06); color:hsl(0 0% 90%); cursor:pointer}
   .copy:active{background:hsl(0 0% 100%/0.16)}
+  /* markdown tables */
+  .tablewrap{overflow-x:auto; margin:6px 0; border:1px solid hsl(var(--border)); border-radius:calc(var(--radius) - 2px); -webkit-overflow-scrolling:touch}
+  .bubble table,.act .ax table{border-collapse:collapse; width:100%; font-size:13px}
+  .bubble th,.bubble td,.act .ax th,.act .ax td{border-bottom:1px solid hsl(var(--border)); padding:6px 10px; text-align:left; white-space:nowrap}
+  .bubble th:not(:last-child),.bubble td:not(:last-child),.act .ax th:not(:last-child),.act .ax td:not(:last-child){border-right:1px solid hsl(var(--border))}
+  .bubble thead th,.act .ax thead th{background:hsl(var(--muted)); font-weight:600}
+  .bubble tbody tr:last-child td,.act .ax tbody tr:last-child td{border-bottom:none}
   /* system / status lines */
   .sys{align-self:center; font-size:12px; color:hsl(var(--muted-foreground)); background:hsl(var(--muted)); padding:4px 12px; border-radius:999px; border:1px solid hsl(var(--border)); max-width:90%; text-align:center}
   .daysep{align-self:center; font-size:10.5px; color:hsl(var(--muted-foreground)); letter-spacing:.04em; text-transform:uppercase; margin:10px 0 2px}
@@ -299,6 +306,18 @@
     s = s.replace(/(^|[^*])\*([^*\n]+?)\*(?!\*)/g, "$1<em>$2</em>");
     return s;
   }
+  function mdSplitRow(line){
+    var s=line.trim();
+    if(s.charAt(0)==="|") s=s.slice(1);
+    if(s.charAt(s.length-1)==="|") s=s.slice(0,-1);
+    return s.split("|").map(function(c){ return c.trim(); });
+  }
+  function mdIsSep(line){
+    if(line.indexOf("|")<0) return false;
+    var cells=mdSplitRow(line); if(!cells.length) return false;
+    return cells.every(function(c){ return /^:?-{1,}:?$/.test(c); });
+  }
+  function mdAlign(c){ var l=c.charAt(0)===":", r=c.charAt(c.length-1)===":"; return (l&&r)?"center":(r?"right":(l?"left":"")); }
   function renderMarkdown(text){
     var out=[]; var lines=esc(text).split(/\n/);
     var i=0, inCode=false, code=[], codeLang="", listType=null, list=[];
@@ -314,6 +333,17 @@
       if(inCode){ code.push(ln); i++; continue; }
       var h=ln.match(/^\s*(#{1,3})\s+(.*)$/);
       if(h){ closeList(); out.push("<h"+h[1].length+">"+renderInline(h[2])+"</h"+h[1].length+">"); i++; continue; }
+      // GFM table: a row with pipes followed by a delimiter row
+      if(ln.indexOf("|")>=0 && i+1<lines.length && mdIsSep(lines[i+1])){
+        closeList();
+        var head=mdSplitRow(ln), aligns=mdSplitRow(lines[i+1]).map(mdAlign), body=[], j=i+2;
+        while(j<lines.length && lines[j].indexOf("|")>=0 && lines[j].trim()!==""){ body.push(mdSplitRow(lines[j])); j++; }
+        var t='<div class="tablewrap"><table><thead><tr>';
+        head.forEach(function(c,k){ t+='<th'+(aligns[k]?' style="text-align:'+aligns[k]+'"':'')+'>'+renderInline(c)+'</th>'; });
+        t+='</tr></thead><tbody>';
+        body.forEach(function(r){ t+='<tr>'; head.forEach(function(_,k){ var c=r[k]!==undefined?r[k]:""; t+='<td'+(aligns[k]?' style="text-align:'+aligns[k]+'"':'')+'>'+renderInline(c)+'</td>'; }); t+='</tr>'; });
+        out.push(t+'</tbody></table></div>'); i=j; continue;
+      }
       var ul=ln.match(/^\s*[-*]\s+(.*)$/); var ol=ln.match(/^\s*\d+\.\s+(.*)$/);
       if(ul){ if(listType!=="ul"){ closeList(); listType="ul"; } list.push("<li>"+renderInline(ul[1])+"</li>"); i++; continue; }
       if(ol){ if(listType!=="ol"){ closeList(); listType="ol"; } list.push("<li>"+renderInline(ol[1])+"</li>"); i++; continue; }

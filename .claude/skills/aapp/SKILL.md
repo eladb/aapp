@@ -34,6 +34,10 @@ of this **yourself, with no questions** — pick sensible defaults and go:
    (`bridge.py tail` — transcript auto-detected) and the wait loop, then hand the
    user the link with "open in Safari → **Add to Home Screen**."
 
+The app **shows session activity by default** — `install.sh` starts the tailer
+for you; if you ran the steps by hand, start `bridge.py tail` so the feed has
+something to show.
+
 **No hosting step is needed:** the app is served from the canonical public build
 (`https://eladb.github.io/aapp/`) and the whole session lives in the URL
 fragment, so `bridge.py link` needs no `--app-url`. Don't ask which host, name,
