@@ -39,12 +39,15 @@
     }
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html,body{height:100%}
+  html{height:100%}
   body{
     margin:0; background:hsl(var(--background)); color:hsl(var(--foreground));
     font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
     display:flex; flex-direction:column; overflow:hidden; overscroll-behavior-y:none;
     -webkit-font-smoothing:antialiased;
+    /* fill the *visual* viewport so the composer pins to the bottom with no gap
+       (dvh tracks iOS toolbars/keyboard; fallbacks for older engines) */
+    height:100%; height:-webkit-fill-available; height:100svh; height:100dvh;
   }
   /* ---- header ---- */
   header{
@@ -71,7 +74,7 @@
   .iconbtn:hover{background:hsl(var(--accent)); color:hsl(var(--foreground))}
   .iconbtn:active{background:hsl(var(--muted))}
   /* ---- messages ---- */
-  #scroll{flex:1; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:14px 12px 8px; scroll-behavior:smooth}
+  #scroll{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:14px 12px 8px; scroll-behavior:smooth}
   #list{display:flex; flex-direction:column; gap:8px; max-width:760px; margin:0 auto}
   .row{display:flex; gap:8px; align-items:flex-end}
   .row.me{flex-direction:row-reverse}
@@ -468,10 +471,18 @@
   function scrollToBottom(instant){
     if(typingEl) moveTypingToEnd();
     var doit=function(){ scrollEl.scrollTop=scrollEl.scrollHeight; };
-    if(instant){ var b=scrollEl.style.scrollBehavior; scrollEl.style.scrollBehavior="auto"; doit(); scrollEl.style.scrollBehavior=b; }
-    else doit();
+    if(instant){
+      var b=scrollEl.style.scrollBehavior; scrollEl.style.scrollBehavior="auto";
+      doit(); requestAnimationFrame(function(){ doit(); scrollEl.style.scrollBehavior=b; });
+    } else { doit(); requestAnimationFrame(doit); }
     unread=0; updateUnread(); atBottom=true; toBottomEl.classList.remove("show");
   }
+  // Keep the latest message pinned to the composer when the visual viewport
+  // changes (iOS keyboard show/hide, toolbar, rotation) — fixes the bottom gap.
+  function stickBottom(){ if(atBottom) scrollToBottom(true); }
+  window.addEventListener("resize", stickBottom);
+  window.addEventListener("orientationchange", function(){ setTimeout(function(){ scrollToBottom(true); }, 300); });
+  if(window.visualViewport){ window.visualViewport.addEventListener("resize", stickBottom); }
   function bumpUnread(){ unread++; updateUnread(); toBottomEl.classList.add("show"); }
   function updateUnread(){ if(unread>0){ unreadEl.style.display=""; unreadEl.textContent=unread>99?"99+":unread; } else unreadEl.style.display="none"; }
   scrollEl.addEventListener("scroll", function(){
@@ -668,6 +679,8 @@
   });
   function autoGrow(){ inputEl.style.height="auto"; inputEl.style.height=Math.min(inputEl.scrollHeight, window.innerHeight*0.38)+"px"; }
   inputEl.addEventListener("input", function(){ autoGrow(); sendEl.disabled=inputEl.value.trim()===""; });
+  inputEl.addEventListener("focus", function(){ setTimeout(function(){ scrollToBottom(true); }, 300); });
+  inputEl.addEventListener("blur", function(){ setTimeout(stickBottom, 100); });
 
   // ---------- settings sheet ----------
   var scrim=$("scrim"), sheet=$("sheet");
