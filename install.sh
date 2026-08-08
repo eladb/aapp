@@ -49,9 +49,15 @@ python3 "$DEST/scripts/bridge.py" send \
 
 # Start the session activity feed (summaries only) in the background so the app
 # shows what the agent is doing by default. Transcript is auto-detected.
-if ! pgrep -f "bridge.py tail" >/dev/null 2>&1; then
+# Guard with a per-session pidfile so re-running install doesn't double-start,
+# but a different session (different AAPP_STATE) still starts its own.
+PIDF="${AAPP_STATE}.tail.pid"
+if [ -f "$PIDF" ] && kill -0 "$(cat "$PIDF" 2>/dev/null)" 2>/dev/null; then
+  echo "  ✓ session activity feed already running"
+else
   nohup python3 "$DEST/scripts/bridge.py" tail --from end --backfill 40 \
     >/dev/null 2>&1 &
+  echo $! > "$PIDF"
   disown 2>/dev/null || true
   echo "  ✓ session activity feed streaming"
 fi
