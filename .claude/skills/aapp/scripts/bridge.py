@@ -680,6 +680,19 @@ def cmd_status(args):
     print(json.dumps({"status": text[:80]}))
 
 
+def cmd_icon(args):
+    state = require_state(args)
+    fields = {}
+    if args.emoji:
+        fields["emoji"] = args.emoji
+    if args.url:
+        fields["url"] = args.url
+    if not fields:
+        sys.exit("provide --emoji or --url")
+    send_signal(state, "icon", **fields)
+    print(json.dumps({"icon": fields}))
+
+
 def cmd_wait(args):
     state = require_state(args)
     msg = wait_for_user_message(state, args)
@@ -745,6 +758,11 @@ def build_parser():
     st = sub.add_parser("status", help="send a transient status line")
     st.add_argument("--text", default=None)
     st.set_defaults(func=cmd_status)
+
+    ic = sub.add_parser("icon", help="set the app icon/favicon (emoji or image url)")
+    ic.add_argument("--emoji", default=None, help="an emoji to use as the icon")
+    ic.add_argument("--url", default=None, help="an image URL or data: URI")
+    ic.set_defaults(func=cmd_icon)
 
     w = sub.add_parser("wait", help="block for the next complete user message")
     w.add_argument("--timeout", type=int, default=50,

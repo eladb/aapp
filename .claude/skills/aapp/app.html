@@ -448,6 +448,7 @@
     if(type==="status"){ if(role!=="user") showStatus(env.text); return; }
     if(type==="activity"){ addActivity(env, ntfyId); return; }
     if(type==="title"){ if(env.text) setAppName(env.text); return; }
+    if(type==="icon"){ setAppIcon(env); return; }
     if(role==="user" && type==="msg"){
       // our own user messages already shown optimistically; show if from elsewhere
     }
@@ -649,25 +650,50 @@
   var toastT=null;
   function toast(msg){ var el=$("toast"); el.textContent=msg; el.classList.add("show"); if(toastT)clearTimeout(toastT); toastT=setTimeout(function(){ el.classList.remove("show"); },1600); }
 
-  // ---------- icon (runtime PNG for crisp Home-Screen icon) ----------
-  (function makeIcon(){
+  // ---------- app icon / favicon (live, settable via 'icon' events) ----------
+  var curGlyph="◈";
+  function renderGlyphIcon(glyph){
+    var c=document.createElement("canvas"); c.width=c.height=180; var x=c.getContext("2d");
+    var g=x.createLinearGradient(0,0,180,180); g.addColorStop(0,"#7c6bff"); g.addColorStop(1,"#5b8bff");
+    var r=40; x.fillStyle=g; x.beginPath();
+    x.moveTo(r,0); x.arcTo(180,0,180,180,r); x.arcTo(180,180,0,180,r); x.arcTo(0,180,0,0,r); x.arcTo(0,0,180,0,r); x.closePath(); x.fill();
+    x.fillStyle="#fff"; x.textAlign="center"; x.textBaseline="middle";
+    x.font='104px -apple-system,"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+    x.fillText(glyph||"◈",90,100);
+    return c.toDataURL("image/png");
+  }
+  function iconLink(rel){
+    var l=document.querySelector('link[rel="'+rel+'"]');
+    if(!l){ l=document.createElement("link"); l.rel=rel; document.head.appendChild(l); }
+    return l;
+  }
+  function applyIcon(url, emoji){
+    try{ iconLink("apple-touch-icon").href=url; }catch(e){}
+    try{ iconLink("icon").href=url; }catch(e){}
+    var av=document.querySelector(".avatar");
+    if(av){
+      if(emoji){ av.textContent=emoji; av.style.background="linear-gradient(135deg,var(--accent),var(--accent2))"; av.style.backgroundSize=""; }
+      else { av.textContent=""; av.style.background="center/cover no-repeat url('"+url+"')"; }
+    }
     try{
-      var c=document.createElement("canvas"); c.width=c.height=180; var x=c.getContext("2d");
-      var g=x.createLinearGradient(0,0,180,180); g.addColorStop(0,"#7c6bff"); g.addColorStop(1,"#5b8bff");
-      // rounded rect
-      var r=40; x.fillStyle=g; x.beginPath();
-      x.moveTo(r,0); x.arcTo(180,0,180,180,r); x.arcTo(180,180,0,180,r); x.arcTo(0,180,0,0,r); x.arcTo(0,0,180,0,r); x.closePath(); x.fill();
-      x.fillStyle="#fff"; x.font="bold 104px -apple-system,sans-serif"; x.textAlign="center"; x.textBaseline="middle";
-      x.fillText("◈",90,96);
-      var url=c.toDataURL("image/png");
-      $("apple-icon").setAttribute("href",url);
-      // dynamic manifest for Android installability
       var man={name:name||"Agent", short_name:name||"Agent", start_url:".", scope:".",
         display:"standalone", background_color:"#0b1020", theme_color:"#0b1020",
         icons:[{src:url,sizes:"180x180",type:"image/png"},{src:url,sizes:"512x512",type:"image/png"}]};
-      var murl=URL.createObjectURL(new Blob([JSON.stringify(man)],{type:"application/manifest+json"}));
-      var link=document.createElement("link"); link.rel="manifest"; link.href=murl; document.head.appendChild(link);
+      iconLink("manifest").href=URL.createObjectURL(new Blob([JSON.stringify(man)],{type:"application/manifest+json"}));
     }catch(e){}
+  }
+  function setAppIcon(env){
+    var url=null, emoji=null;
+    if(env.emoji){ emoji=env.emoji; curGlyph=env.emoji; url=renderGlyphIcon(env.emoji); }
+    else if(env.url){ url=env.url; }
+    if(!url) return;
+    applyIcon(url, emoji);
+    try{ localStorage.setItem("aapp:icon:"+topic, JSON.stringify(env)); }catch(e){}
+  }
+  (function initIcon(){
+    var stored=null; try{ stored=JSON.parse(localStorage.getItem("aapp:icon:"+topic)||"null"); }catch(e){}
+    if(stored && (stored.emoji || stored.url)) setAppIcon(stored);
+    else { try{ applyIcon(renderGlyphIcon(curGlyph), curGlyph); }catch(e){} }
   })();
 
   // ---------- boot ----------

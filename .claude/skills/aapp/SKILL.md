@@ -146,6 +146,14 @@ feed with a per-device on/off toggle (Settings → *Show session activity*).
 The transcript path is the session JSONL (in Claude Code, typically under
 `~/.claude/projects/<project>/<session-id>.jsonl`).
 
+### Personalize the app live
+
+- **Name:** `bridge.py link --name-from-transcript <jsonl>` names the app after
+  the session; while `tail` is running it also streams the title, so renaming
+  the session renames the app live (header, tab, iOS title).
+- **Icon:** `bridge.py icon --emoji 🚀` (or `--url <image>`) sets the favicon,
+  iOS/home-screen icon, and header avatar live. Persisted per device.
+
 ### Etiquette for a good mobile chat
 
 - Keep replies **short and skimmable**; the app renders Markdown (bold, lists,

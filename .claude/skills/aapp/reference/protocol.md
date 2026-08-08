@@ -26,8 +26,10 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system" | "activity" | "title",
+  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon",
   "kind": "assistant" | "tool" | "user",   // for type=activity only
+  "emoji": "🚀",              // for type=icon (emoji rendered to the icon)
+  "url": "https://…|data:…",  // for type=icon (image used directly)
   "mid": "u1a2b3c",           // logical message id (groups multi-part messages)
   "seq": 0,                    // 0-based part index
   "last": true,                // true on the final part of a message
@@ -51,6 +53,10 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
 - **`title`** — the session's current title (from `bridge.py tail`). The app
   updates its header, document title, and iOS app-title live, so renaming the
   session renames the app. Persisted per-topic and overrides the link's `n=`.
+- **`icon`** — sets the app icon live (`bridge.py icon --emoji 🚀` or
+  `--url <img>`). The app renders an emoji onto a rounded gradient tile (or uses
+  the image) and updates the favicon, apple-touch-icon, manifest icon, and
+  header avatar. Persisted per-topic.
 - **`activity`** — one line of session activity (from `bridge.py tail`), with a
   `kind` of `assistant` (a model message), `tool` (a compact tool-call summary),
   or `user` (a terminal-side user turn). Rendered as a distinct muted feed,
