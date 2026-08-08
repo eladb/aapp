@@ -9,8 +9,9 @@ name: Deploy aapp to GitHub Pages
 on:
   push:
     branches:
-      - main
-      - claude/agent-shareable-mobile-app-0sc6ez
+      - main   # Pages deploys only from the default branch; a feature-branch
+               # run can't deploy (github-pages environment) and would cancel
+               # the main run via the shared concurrency group.
     paths:
       - .claude/skills/aapp/app.html
       - site/**
