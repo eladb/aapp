@@ -460,6 +460,15 @@ def summarize_event(o):
         # thinking / tool_result intentionally omitted
 
 
+def publish_title(sess, cid, title):
+    env = {
+        "v": PROTOCOL_VERSION, "cid": cid, "role": "agent", "type": "title",
+        "mid": "title-" + uuid.uuid4().hex[:8], "seq": 0, "last": True,
+        "text": title[:120], "ts": now_ms(),
+    }
+    publish_envelope(sess["server"], sess["topic"], env)
+
+
 def publish_activity(sess, cid, kind, text):
     env = {
         "v": PROTOCOL_VERSION,
@@ -511,6 +520,13 @@ def tail_transcript(state, args):
             pass
     buf = ""
     published = 0
+    # keep the app's title in sync with the session title, live
+    cur_title = read_session_title(path)
+    if cur_title:
+        try:
+            publish_title(state, cid, cur_title)
+        except Exception:
+            pass
     deadline = time.time() + args.timeout if args.timeout else None
     while True:
         if deadline and time.time() > deadline:
@@ -537,6 +553,15 @@ def tail_transcript(state, args):
                 try:
                     o = json.loads(line)
                 except ValueError:
+                    continue
+                if o.get("type") == "custom-title":
+                    t = o.get("customTitle") or o.get("title")
+                    if isinstance(t, str) and t.strip() and t.strip() != cur_title:
+                        cur_title = t.strip()
+                        try:
+                            publish_title(state, cid, cur_title)
+                        except Exception:
+                            pass
                     continue
                 for kind, text in summarize_event(o):
                     if not text:

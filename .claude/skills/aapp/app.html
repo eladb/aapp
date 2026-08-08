@@ -227,7 +227,10 @@
       if(last){ server=last.server; topic=last.topic; name=last.name||""; } }catch(e){}
   }
   if(!server) server = "https://ntfy.sh";
+  // a live title (streamed from the session) wins over the link's n= param
+  try{ var storedName=topic && localStorage.getItem("aapp:name:"+topic); if(storedName) name=storedName; }catch(e){}
   if(name){ document.getElementById("title").textContent=name;
+            try{ document.title=name; }catch(e){}
             document.querySelector('meta[name="apple-mobile-web-app-title"]').setAttribute("content",name); }
   if(topic){ try{ localStorage.setItem(LS_LAST, JSON.stringify({server:server,topic:topic,name:name})); }catch(e){} }
 
@@ -444,6 +447,7 @@
     if(type==="typing"){ if(role!=="user") setTyping(env.state==="on"); return; }
     if(type==="status"){ if(role!=="user") showStatus(env.text); return; }
     if(type==="activity"){ addActivity(env, ntfyId); return; }
+    if(type==="title"){ if(env.text) setAppName(env.text); return; }
     if(role==="user" && type==="msg"){
       // our own user messages already shown optimistically; show if from elsewhere
     }
@@ -471,6 +475,15 @@
     var m={mid:mid, role:"activity", type:"activity", kind:env.kind||"tool", text:env.text||"", ts:env.ts||Date.now(), done:true};
     byId[mid]=m; messages.push(m);
     upsertRow(m); save(); pruneMemory();
+  }
+  function setAppName(nm){
+    nm=(nm||"").trim(); if(!nm || nm===name) return;
+    name=nm;
+    var tEl=document.getElementById("title"); if(tEl) tEl.textContent=nm;
+    try{ document.title=nm; }catch(e){}
+    var meta=document.querySelector('meta[name="apple-mobile-web-app-title"]'); if(meta) meta.setAttribute("content",nm);
+    try{ localStorage.setItem("aapp:name:"+topic, nm); }catch(e){}
+    try{ var last=JSON.parse(localStorage.getItem(LS_LAST)||"null"); if(last){ last.name=nm; localStorage.setItem(LS_LAST, JSON.stringify(last)); } }catch(e){}
   }
   function showStatus(text){
     if(!text) return;
