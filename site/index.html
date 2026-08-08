@@ -70,6 +70,8 @@
   .copy{position:absolute; top:9px; right:10px; font-size:12px; color:var(--muted); background:var(--card);
     border:1px solid var(--line); border-radius:8px; padding:5px 10px; cursor:pointer}
   .copy:hover{color:var(--ink)}
+  .term .bar .mk{color:var(--muted); font-size:14px; line-height:1}
+  .term.prompt pre{font-family:var(--sans); color:#e4e4e7; white-space:pre-wrap; font-size:14px; line-height:1.65}
   /* hero showcase (phone) */
   .showcase{position:relative; z-index:1; display:flex; justify-content:center; margin:56px auto 0}
   .phone{width:290px; border:10px solid #18181b; border-radius:42px; background:#0b0b0d; box-shadow:0 30px 80px rgba(0,0,0,.6);
@@ -153,16 +155,15 @@
 
 <section id="install"><div class="wrap">
   <div class="kicker">One paste</div>
-  <h2>Install &amp; publish in one line.</h2>
-  <p class="sub">Drop the repo into any Claude Code session, or run the installer. It drops in the skill, names the app after your session, picks a fitting icon, and hands you a shareable link — nothing to deploy.</p>
-  <div class="term">
-    <div class="bar"><i></i><i></i><i></i><span class="t">bash</span><button class="copy" id="cp">Copy</button></div>
-    <pre id="cmd"><span class="c"># in any Claude Code session</span>
-<span class="p">$</span> curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+  <h2>Paste one prompt into Claude Code.</h2>
+  <p class="sub">Drop this prompt into any Claude Code session. It installs the skill, names the app after your session, picks a fitting icon, starts the activity feed, and hands you a shareable link — no questions, nothing to deploy.</p>
+  <div class="term prompt">
+    <div class="bar"><span class="mk">◈</span><span class="t">paste into Claude&nbsp;Code</span><button class="copy" id="cp">Copy prompt</button></div>
+    <pre id="cmd">Install aapp from https://github.com/eladb/aapp and give me a link to chat with this Claude Code session from my phone.
 
-<span class="c">✅ Your shareable link — open on your phone, then Add to Home Screen:</span>
-   https://eladb.github.io/aapp/app.html#s=…&amp;t=…</pre>
+Run the installer — curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash — then name the app after this session, pick an emoji icon that fits what we're working on, start the activity feed, and post the shareable link. No questions.</pre>
   </div>
+  <p class="subnote" style="text-align:left">Prefer the shell? The prompt runs that same one-line installer.</p>
 </div></section>
 
 <section id="features"><div class="wrap">
@@ -216,10 +217,11 @@
 
 <script>
   document.getElementById("cp").addEventListener("click", function(){
-    var t="curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash";
-    (navigator.clipboard&&navigator.clipboard.writeText?navigator.clipboard.writeText(t):Promise.reject())
-      .then(function(){ var b=document.getElementById("cp"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy";},1200); })
-      .catch(function(){});
+    var t=document.getElementById("cmd").innerText.trim();
+    function done(){ var b=document.getElementById("cp"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy prompt";},1300); }
+    if(navigator.clipboard&&navigator.clipboard.writeText){ navigator.clipboard.writeText(t).then(done).catch(fallback); }
+    else fallback();
+    function fallback(){ var ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy"); done();}catch(e){} ta.remove(); }
   });
 </script>
 </body>
