@@ -75,6 +75,10 @@ Store the resulting URL so the link builder can use it:
 python3 .claude/skills/aapp/scripts/bridge.py link --app-url "<public app.html url>" --name "My Session"
 ```
 
+The `--name` sets the app's display name (header + iOS Home-Screen title). To
+name the app after the **session** automatically, pass the transcript instead:
+`--name-from-transcript "<session .jsonl>"` uses the session's current title.
+
 That prints the full shareable link, e.g.
 `https://…/app.html#s=https://ntfy.sh&t=aapp-<random>&n=My%20Session`.
 

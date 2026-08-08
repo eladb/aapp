@@ -556,6 +556,25 @@ def tail_transcript(state, args):
 # --------------------------------------------------------------------------
 # link
 # --------------------------------------------------------------------------
+def read_session_title(path):
+    """Return the session's latest custom title from its transcript, or None."""
+    title = None
+    try:
+        with open(path, "r", encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                ln = ln.strip()
+                if '"custom-title"' not in ln:
+                    continue
+                try:
+                    o = json.loads(ln)
+                except ValueError:
+                    continue
+                t = o.get("customTitle") or o.get("title")
+                if isinstance(t, str) and t.strip():
+                    title = t.strip()
+    except OSError:
+        return None
+    return title
 def build_link(state, app_url=None, name=None):
     app_url = app_url or state.get("app_url")
     if not app_url:
@@ -599,7 +618,10 @@ def cmd_link(args):
     if args.app_url:
         state["app_url"] = args.app_url
         save_state(args.state, state)
-    print(build_link(state, app_url=args.app_url, name=args.name))
+    name = args.name
+    if args.name_from_transcript:
+        name = read_session_title(args.name_from_transcript) or name
+    print(build_link(state, app_url=args.app_url, name=name))
 
 
 def cmd_send(args):
@@ -679,7 +701,9 @@ def build_parser():
 
     l = sub.add_parser("link", help="print the shareable phone link")
     l.add_argument("--app-url", default=None)
-    l.add_argument("--name", default=None, help="optional session display name")
+    l.add_argument("--name", default=None, help="optional app display name")
+    l.add_argument("--name-from-transcript", default=None,
+                   help="derive the app name from a session transcript's title")
     l.set_defaults(func=cmd_link)
 
     s = sub.add_parser("send", help="send an agent message (chunked)")
