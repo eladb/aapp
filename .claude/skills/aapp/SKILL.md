@@ -129,11 +129,14 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
 
 1. **Wait for a message** in the background so the turn ends until one arrives:
    ```bash
-   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 600
+   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 1800
    ```
    Run this with your background-execution tool. It prints the message as JSON to
    **stdout** (which your background tool captures) when one arrives, or exits 22
-   on timeout. **Run it exactly as written — no `VAR=… ` env-var prefix.** The
+   on timeout. Use a **long** timeout (default 1800s): messages wake it instantly
+   via streaming, so a big value just avoids idle returns; the read cursor is
+   persisted, so nothing is missed while re-arming (if the environment recycles
+   the background process sooner, just start another `wait`). **Run it exactly as written — no `VAR=… ` env-var prefix.** The
    session-scoped state file is auto-detected, and a leading env assignment both
    breaks that and stops the pre-authorization rule (see *Permissions*) from
    matching, which is what makes the listener get blocked.

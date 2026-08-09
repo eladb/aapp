@@ -1200,8 +1200,11 @@ def build_parser():
     at.set_defaults(func=cmd_attach)
 
     w = sub.add_parser("wait", help="block for the next complete user message")
-    w.add_argument("--timeout", type=int, default=50,
-                   help="max seconds to block (default 50)")
+    w.add_argument("--timeout", type=int, default=1800,
+                   help="max seconds to block before returning empty (default 1800). "
+                        "Messages still wake it instantly via streaming; a larger "
+                        "value just means fewer idle returns. The read cursor is "
+                        "persisted, so nothing is missed between re-arms.")
     w.add_argument("--since", default=None,
                    help="override read cursor (ntfy id or 'all')")
     w.add_argument("--out", default=None,
