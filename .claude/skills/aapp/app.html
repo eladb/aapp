@@ -872,6 +872,20 @@
   autoGrow();
   (supportsStreaming()?streamLoop:pollLoop)();
 
+  // Ask the agent to replay durable history so a freshly-opened client (empty
+  // localStorage, or joining long after messages scrolled out of the relay's
+  // ~12h cache) can rebuild the full conversation. The agent re-broadcasts its
+  // log tagged replay:true; we de-dupe by mid, so this is harmless if we
+  // already have everything. Fire twice in case the first races the agent's
+  // responder coming online (the agent serves each client id at most once).
+  function requestSync(){
+    try{ publish({v:1,cid:CID,role:"user",type:"sync",
+      mid:"sync-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
+      seq:0,last:true,ts:Date.now()}); }catch(e){}
+  }
+  setTimeout(requestSync, 900);
+  setTimeout(requestSync, 5000);
+
   // gentle heartbeat: refresh relative day separators & keep-alive nudge
   document.addEventListener("visibilitychange", function(){ if(!document.hidden){ if(atBottom) scrollToBottom(true); } });
 })();

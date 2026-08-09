@@ -21,6 +21,20 @@ Subcommands
               as JSON, and exit. Reassembles multi-part messages. Advances
               the read cursor so messages are processed exactly once.
   history     Print all cached messages for the topic as JSON lines.
+  serve       Stay subscribed and replay the durable transcript to any client
+              that asks to sync (so late-joining phones rebuild full history
+              beyond the relay's ~12h cache). Folded into `tail` by default.
+  replay      Re-broadcast the durable transcript once, right now.
+
+Durable history
+---------------
+Every chat envelope (agent msg/system/attach/title/icon and each inbound user
+msg/attach) is appended to an authoritative log next to the state file
+(`<state>.log.jsonl`). The relay only caches ~12h, so a client that connects
+later can't rebuild older history from it; instead it publishes a `sync`
+request and the `serve` responder re-broadcasts the log tagged `replay:true`.
+Connected clients de-dupe replays by `mid`; `wait` ignores `replay:true` so a
+message is never processed twice.
 
 Envelope schema (v1), carried as the ntfy message body:
   {
@@ -43,6 +57,7 @@ import mimetypes
 import os
 import ssl
 import sys
+import threading
 import time
 import urllib.request
 import urllib.error
@@ -57,6 +72,14 @@ CANONICAL_APP_URL = os.environ.get("AAPP_APP_URL", "https://eladb.github.io/aapp
 # comfortably under that.
 MAX_ENVELOPE_BYTES = 3000
 PROTOCOL_VERSION = 1
+
+# Durable transcript / history replay. The relay only caches ~12h, so a client
+# that connects later can't rebuild older history from it. We keep our own
+# append-only log of chat envelopes and re-broadcast it when a fresh client asks
+# to sync (see `serve` / the tail responder).
+REPLAY_MAX_DEFAULT = 300     # most-recent chat envelopes to replay per client
+REPLAY_THROTTLE = 0.12       # seconds between replay publishes (be nice to ntfy)
+SERVE_DEDUPE_SECONDS = 120   # don't replay to the same client more than this often
 
 
 # --------------------------------------------------------------------------
@@ -95,6 +118,60 @@ def save_state(path, state):
     with open(tmp, "w") as f:
         json.dump(state, f, indent=2)
     os.replace(tmp, path)
+
+
+# --------------------------------------------------------------------------
+# durable transcript log (append-only) -- authoritative chat history so a
+# newly-connected client can replay past messages beyond the relay's ~12h cache
+# --------------------------------------------------------------------------
+def default_log_path(state_path):
+    return (state_path or default_state_path()) + ".log.jsonl"
+
+
+def append_log(state_path, record):
+    """Append one normalized chat record (a dict) as a JSON line. Best-effort:
+    logging must never break the actual send/receive."""
+    try:
+        p = default_log_path(state_path)
+        d = os.path.dirname(p)
+        if d:
+            os.makedirs(d, exist_ok=True)
+        with open(p, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, separators=(",", ":")) + "\n")
+    except OSError:
+        pass
+
+
+def read_log_records(state_path):
+    """Read the durable log, de-duplicated by mid (last write wins), preserving
+    first-seen order. Returns a list of record dicts."""
+    p = default_log_path(state_path)
+    order = []
+    by_mid = {}
+    try:
+        with open(p, "r", encoding="utf-8", errors="replace") as f:
+            for ln in f:
+                ln = ln.strip()
+                if not ln:
+                    continue
+                try:
+                    o = json.loads(ln)
+                except ValueError:
+                    continue
+                if not isinstance(o, dict):
+                    continue
+                mid = o.get("mid")
+                if mid and mid in by_mid:
+                    by_mid[mid] = o  # last write wins (e.g. re-logged part)
+                    continue
+                if mid:
+                    by_mid[mid] = o
+                order.append(mid or ("_%d" % len(order)))
+                if not mid:
+                    by_mid[order[-1]] = o
+    except OSError:
+        return []
+    return [by_mid[k] for k in order if k in by_mid]
 
 
 def require_state(args):
@@ -220,20 +297,24 @@ def chunk_text(text, overhead):
     return parts
 
 
-def send_message(state, role, mtype, text):
-    mid = uuid.uuid4().hex[:12]
+def send_message(state, role, mtype, text, mid=None, cid=None, ts=None, replay=False):
+    mid = mid or uuid.uuid4().hex[:12]
+    cid = cid or state["cid"]
+    base_ts = ts if ts is not None else now_ms()
     # Estimate fixed JSON overhead with an empty text field, then chunk.
     skeleton = {
         "v": PROTOCOL_VERSION,
-        "cid": state["cid"],
+        "cid": cid,
         "role": role,
         "type": mtype,
         "mid": mid,
         "seq": 0,
         "last": True,
         "text": "",
-        "ts": now_ms(),
+        "ts": base_ts,
     }
+    if replay:
+        skeleton["replay"] = True
     overhead = len(json.dumps(skeleton, separators=(",", ":")).encode("utf-8")) + 8
     parts = chunk_text(text, overhead)
     total = len(parts)
@@ -242,7 +323,9 @@ def send_message(state, role, mtype, text):
         env["seq"] = i
         env["last"] = i == total - 1
         env["text"] = part
-        env["ts"] = now_ms()
+        # Replays preserve the original timestamp so history sorts correctly;
+        # live sends stamp each part fresh.
+        env["ts"] = base_ts if ts is not None else now_ms()
         publish_envelope(state["server"], state["topic"], env)
     return mid, total
 
@@ -336,9 +419,20 @@ def wait_for_user_message(state, args):
                     state["last_id"] = nid
                 if env.get("role") != "user":
                     continue
+                if env.get("replay"):
+                    # history re-broadcast for a late-joining client; already
+                    # processed once -- never treat as a new inbound message
+                    continue
                 mtype = env.get("type", "msg")
                 if mtype == "attach":
                     save_state(args.state, state)
+                    append_log(args.state, {
+                        "type": "attach", "role": "user", "mid": env.get("mid"),
+                        "cid": env.get("cid"), "url": env.get("url"),
+                        "name": env.get("name"), "mime": env.get("mime"),
+                        "size": env.get("size"), "text": env.get("text") or "",
+                        "ts": env.get("ts") or now_ms(),
+                    })
                     return {
                         "type": "attach",
                         "url": env.get("url"), "name": env.get("name"),
@@ -372,6 +466,11 @@ def wait_for_user_message(state, args):
                 if total is not None and all(i in buffers[mid] for i in range(total)):
                     text = "".join(buffers[mid][i] for i in range(total))
                     save_state(args.state, state)
+                    append_log(args.state, {
+                        "type": "msg", "role": "user", "mid": mid,
+                        "cid": env.get("cid"), "text": text,
+                        "ts": env.get("ts") or now_ms(),
+                    })
                     return {
                         "type": "msg",
                         "mid": mid,
@@ -402,6 +501,134 @@ def history(state):
     except urllib.error.URLError as e:
         sys.exit("history failed: %s" % e)
     return out
+
+
+# --------------------------------------------------------------------------
+# durable history replay -- serve the append-only log to late-joining clients
+# --------------------------------------------------------------------------
+def republish_record(state, rec):
+    """Re-broadcast one logged chat record, tagged replay:true so waiters ignore
+    it and connected clients de-dupe it by mid."""
+    t = rec.get("type")
+    if t in ("msg", "system"):
+        send_message(
+            state, rec.get("role", "agent"), t, rec.get("text", ""),
+            mid=rec.get("mid"), cid=rec.get("cid"), ts=rec.get("ts"), replay=True,
+        )
+        return
+    env = {
+        "v": PROTOCOL_VERSION, "cid": rec.get("cid") or state["cid"],
+        "role": rec.get("role", "agent"), "type": t,
+        "mid": rec.get("mid") or (t + "-" + uuid.uuid4().hex[:8]),
+        "seq": 0, "last": True, "ts": rec.get("ts") or now_ms(), "replay": True,
+    }
+    if t == "attach":
+        env.update({
+            "url": rec.get("url"), "name": rec.get("name"),
+            "mime": rec.get("mime"), "size": rec.get("size"),
+            "text": rec.get("text") or "", "w": rec.get("w"), "h": rec.get("h"),
+        })
+    elif t == "title":
+        env["text"] = rec.get("text") or ""
+    elif t == "icon":
+        if rec.get("emoji"):
+            env["emoji"] = rec.get("emoji")
+        if rec.get("url"):
+            env["url"] = rec.get("url")
+    else:
+        return
+    publish_envelope(state["server"], state["topic"], env)
+
+
+def replay_history(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
+                   throttle=REPLAY_THROTTLE):
+    """Re-broadcast logged history: the latest title+icon, then the last
+    `replay_max` chat messages/attachments in order, then a sync-done marker."""
+    recs = read_log_records(state_path)
+    last_title = last_icon = None
+    chat = []
+    for r in recs:
+        rt = r.get("type")
+        if rt == "title":
+            last_title = r
+        elif rt == "icon":
+            last_icon = r
+        elif rt in ("msg", "system", "attach"):
+            chat.append(r)
+    chat = chat[-replay_max:]
+    sent = 0
+    for r in (last_title, last_icon):
+        if r:
+            try:
+                republish_record(state, r)
+                sent += 1
+                time.sleep(throttle)
+            except Exception:
+                pass
+    for r in chat:
+        try:
+            republish_record(state, r)
+            sent += 1
+            time.sleep(throttle)
+        except Exception:
+            pass
+    # sync-done marker (clients ignore unknown types; useful for tests/tools)
+    try:
+        publish_envelope(state["server"], state["topic"], {
+            "v": PROTOCOL_VERSION, "cid": state["cid"], "role": "agent",
+            "type": "sync-done", "mid": "syncdone-" + uuid.uuid4().hex[:8],
+            "seq": 0, "last": True, "count": sent, "ts": now_ms(), "replay": True,
+        })
+    except Exception:
+        pass
+    return sent
+
+
+def run_sync_responder(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
+                       throttle=REPLAY_THROTTLE, stop=None, once=False):
+    """Subscribe to the topic for NEW messages and, when a client publishes a
+    `sync` request, re-broadcast the durable log to it. Each requesting client
+    is served at most once per SERVE_DEDUPE_SECONDS. Runs until `stop()` is
+    truthy (or forever). Safe to run alongside `wait` and `tail`."""
+    server = state["server"].rstrip("/")
+    topic = state["topic"]
+    url = "%s/%s/json" % (server, topic)  # no `since` -> only messages from now
+    served = {}  # cid -> monotonic time last served
+    while stop is None or not stop():
+        try:
+            resp = http_open(url, timeout=70)
+            try:
+                for raw in resp:
+                    if stop is not None and stop():
+                        return
+                    nid, env = parse_ntfy_line(
+                        raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+                    )
+                    if env is None:
+                        continue
+                    if env.get("type") != "sync" or env.get("replay"):
+                        continue
+                    cid = env.get("cid") or nid or "anon"
+                    now = time.time()
+                    if now - served.get(cid, 0) < SERVE_DEDUPE_SECONDS:
+                        continue
+                    served[cid] = now
+                    try:
+                        replay_history(state, state_path, replay_max, throttle)
+                    except Exception:
+                        pass
+                    if once:
+                        return
+            finally:
+                try:
+                    resp.close()
+                except Exception:
+                    pass
+        except (urllib.error.URLError, ssl.SSLError, TimeoutError, OSError):
+            if stop is not None and stop():
+                return
+            time.sleep(2)
+            continue
 
 
 # --------------------------------------------------------------------------
@@ -534,6 +761,16 @@ def publish_activity(sess, cid, kind, text):
 def tail_transcript(state, args):
     path = args.transcript
     cid = "tail-" + uuid.uuid4().hex[:8]
+    # Serve durable history to late-joining clients from the same always-on
+    # process (unless disabled). Runs as a daemon thread alongside the tail loop.
+    if getattr(args, "serve_history", True):
+        replay_max = getattr(args, "replay_max", REPLAY_MAX_DEFAULT)
+        t = threading.Thread(
+            target=run_sync_responder,
+            args=(state, args.state, replay_max, REPLAY_THROTTLE),
+            daemon=True,
+        )
+        t.start()
     # Where to start: end (only new activity) or start (replay everything).
     try:
         size = os.path.getsize(path)
@@ -568,6 +805,11 @@ def tail_transcript(state, args):
     if cur_title:
         try:
             publish_title(state, cid, cur_title)
+            append_log(args.state, {
+                "type": "title", "role": "agent",
+                "mid": "title-" + uuid.uuid4().hex[:8], "cid": cid,
+                "text": cur_title, "ts": now_ms(),
+            })
         except Exception:
             pass
     deadline = time.time() + args.timeout if args.timeout else None
@@ -603,6 +845,11 @@ def tail_transcript(state, args):
                         cur_title = t.strip()
                         try:
                             publish_title(state, cid, cur_title)
+                            append_log(args.state, {
+                                "type": "title", "role": "agent",
+                                "mid": "title-" + uuid.uuid4().hex[:8], "cid": cid,
+                                "text": cur_title, "ts": now_ms(),
+                            })
                         except Exception:
                             pass
                     continue
@@ -720,6 +967,10 @@ def cmd_send(args):
     if text == "-" or text is None:
         text = sys.stdin.read()
     mid, total = send_message(state, "agent", args.type, text)
+    append_log(args.state, {
+        "type": args.type, "role": "agent", "mid": mid, "cid": state["cid"],
+        "text": text, "ts": now_ms(),
+    })
     if args.typing_off:
         try:
             send_signal(state, "typing", state="off")
@@ -754,6 +1005,10 @@ def cmd_title(args):
     if not text:
         sys.exit("provide --text")
     send_signal(state, "title", text=text)
+    append_log(args.state, {
+        "type": "title", "role": "agent", "mid": "title-" + uuid.uuid4().hex[:8],
+        "cid": state["cid"], "text": text, "ts": now_ms(),
+    })
     print(json.dumps({"title": text[:80]}))
 
 
@@ -779,6 +1034,11 @@ def cmd_attach(args):
         "text": args.text or "", "ts": now_ms(),
     }
     publish_envelope(state["server"], state["topic"], env)
+    append_log(args.state, {
+        "type": "attach", "role": "agent", "mid": env["mid"], "cid": state["cid"],
+        "url": url, "name": name, "mime": mime, "size": size,
+        "text": args.text or "", "ts": env["ts"],
+    })
     print(json.dumps({"attach": {"url": url, "name": name, "mime": mime}}))
 
 
@@ -792,6 +1052,11 @@ def cmd_icon(args):
     if not fields:
         sys.exit("provide --emoji or --url")
     send_signal(state, "icon", **fields)
+    append_log(args.state, {
+        "type": "icon", "role": "agent", "mid": "icon-" + uuid.uuid4().hex[:8],
+        "cid": state["cid"], "emoji": fields.get("emoji"), "url": fields.get("url"),
+        "ts": now_ms(),
+    })
     print(json.dumps({"icon": fields}))
 
 
@@ -817,6 +1082,21 @@ def cmd_history(args):
     state = require_state(args)
     for env in history(state):
         print(json.dumps(env))
+
+
+def cmd_serve(args):
+    state = require_state(args)
+    print(json.dumps({"serving": True, "topic": state["topic"],
+                      "log": default_log_path(args.state)}))
+    sys.stdout.flush()
+    run_sync_responder(state, args.state, args.replay_max, REPLAY_THROTTLE,
+                       once=args.once)
+
+
+def cmd_replay(args):
+    state = require_state(args)
+    n = replay_history(state, args.state, args.replay_max)
+    print(json.dumps({"replayed": n}))
 
 
 def cmd_tail(args):
@@ -907,7 +1187,24 @@ def build_parser():
     ta.add_argument("--throttle", type=float, default=0.25, help="seconds between publishes")
     ta.add_argument("--timeout", type=int, default=0, help="stop after N seconds (0 = run until killed)")
     ta.add_argument("--once", action="store_true", help="process current backlog then exit")
+    ta.add_argument("--serve-history", dest="serve_history", action="store_true",
+                    default=True, help="also serve durable history to new clients (default)")
+    ta.add_argument("--no-serve-history", dest="serve_history", action="store_false",
+                    help="don't serve history replays from the tail process")
+    ta.add_argument("--replay-max", type=int, default=REPLAY_MAX_DEFAULT,
+                    help="max recent chat messages to replay per client")
     ta.set_defaults(func=cmd_tail)
+
+    sv = sub.add_parser("serve", help="serve durable history replays to newly-connected clients")
+    sv.add_argument("--replay-max", type=int, default=REPLAY_MAX_DEFAULT,
+                    help="max recent chat messages to replay per client")
+    sv.add_argument("--once", action="store_true",
+                    help="serve a single sync request then exit")
+    sv.set_defaults(func=cmd_serve)
+
+    rp = sub.add_parser("replay", help="re-broadcast the durable history now (manual sync)")
+    rp.add_argument("--replay-max", type=int, default=REPLAY_MAX_DEFAULT)
+    rp.set_defaults(func=cmd_replay)
     return p
 
 

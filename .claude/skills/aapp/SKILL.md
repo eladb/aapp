@@ -196,6 +196,14 @@ The transcript path is the session JSONL (in Claude Code, typically under
 - Reconnects are automatic and the relay caches ~12h, so a phone that sleeps
   and wakes still catches up. Persisted history lives in the phone's
   localStorage.
+- **Durable history across devices:** the bridge keeps an authoritative log of
+  chat messages (`<state>.log.jsonl`) and, while `tail` is running, replays it
+  to any newly-opened client on request — so a second phone (or a fresh
+  install) rebuilds the full conversation even past the relay's ~12h window,
+  not just what's left in the cache. It replays the last ~300 messages; older
+  entries stay in the log but aren't re-broadcast. `install.sh` starts `tail`,
+  so this is on by default; run `bridge.py serve` yourself if you drive the
+  loop by hand without the tailer.
 
 ## Notes & limits
 

@@ -26,7 +26,8 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach",
+  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "sync" | "sync-done",
+  "replay": true,             // present on history re-broadcasts (see Durable history)
   "kind": "assistant" | "tool" | "user",   // for type=activity only
   "emoji": "🚀",              // for type=icon (emoji rendered to the icon)
   "url": "https://…|data:…",  // for type=icon / type=attach (image or file URL)
@@ -72,6 +73,28 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   or `user` (a terminal-side user turn). Rendered as a distinct muted feed,
   separate from chat bubbles, and hideable per-device. Summaries only — never
   raw tool output or file contents.
+- **`sync`** — a client request (`role:"user"`) asking the agent to replay
+  durable history. Sent once on app boot. The agent's `serve`/`tail` responder
+  answers by re-broadcasting its log; other clients ignore it.
+- **`sync-done`** — marks the end of a replay batch (carries a `count`).
+  Informational; clients ignore it.
+
+## Durable history
+
+The relay only caches ~12h, so a late-joining client can't rebuild older
+history from it. The agent therefore keeps an authoritative append-only log of
+chat envelopes (`<state>.log.jsonl`: agent `msg`/`system`/`attach`/`title`/
+`icon` and each inbound user `msg`/`attach`). When a client boots it publishes a
+`sync` request; the always-on responder (`bridge.py serve`, folded into `tail`)
+re-broadcasts the log — most-recent title+icon, then up to ~300 recent chat
+messages in order — each envelope tagged **`replay:true`** and carrying its
+**original `mid`**. Consequences:
+
+- Connected clients **de-dupe by `mid`**, so a replay never double-renders for
+  someone who already has the messages.
+- The agent's `wait` loop **ignores `replay:true`**, so replayed history is
+  never reprocessed as a new inbound message.
+- Each requesting client id is served at most once per ~2 min (coalescing).
 
 ### Rules
 
