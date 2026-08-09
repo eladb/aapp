@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.log.jsonl
 .aapp/
+# work-in-progress landing-page candidates (never deploy these)
+site/index.candidate*.html
