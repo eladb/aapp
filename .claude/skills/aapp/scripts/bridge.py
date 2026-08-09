@@ -25,6 +25,9 @@ Subcommands
               that asks to sync (so late-joining phones rebuild full history
               beyond the relay's ~12h cache). Folded into `tail` by default.
   replay      Re-broadcast the durable transcript once, right now.
+  reload      Tell connected clients to update to the latest deployed app build
+              (or --force an immediate reload). See "Auto-update" in
+              reference/protocol.md.
 
 Durable history
 ---------------
@@ -77,7 +80,7 @@ PROTOCOL_VERSION = 1
 # that connects later can't rebuild older history from it. We keep our own
 # append-only log of chat envelopes and re-broadcast it when a fresh client asks
 # to sync (see `serve` / the tail responder).
-REPLAY_MAX_DEFAULT = 300     # most-recent chat envelopes to replay per client
+REPLAY_MAX_DEFAULT = 400     # most-recent timeline items (chat+activity) to replay
 REPLAY_THROTTLE = 0.12       # seconds between replay publishes (be nice to ntfy)
 SERVE_DEDUPE_SECONDS = 120   # don't replay to the same client more than this often
 
@@ -528,6 +531,8 @@ def republish_record(state, rec):
             "mime": rec.get("mime"), "size": rec.get("size"),
             "text": rec.get("text") or "", "w": rec.get("w"), "h": rec.get("h"),
         })
+    elif t == "activity":
+        env.update({"kind": rec.get("kind", "tool"), "text": rec.get("text") or ""})
     elif t == "title":
         env["text"] = rec.get("text") or ""
     elif t == "icon":
@@ -542,21 +547,30 @@ def republish_record(state, rec):
 
 def replay_history(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
                    throttle=REPLAY_THROTTLE):
-    """Re-broadcast logged history: the latest title+icon, then the last
-    `replay_max` chat messages/attachments in order, then a sync-done marker."""
+    """Re-broadcast logged history so a late-joining client rebuilds the full
+    view: the timeline (chat messages, attachments, and activity lines in the
+    order they happened, capped to the last `replay_max`), then the latest
+    title+icon so the app name/icon end correct, then a sync-done marker."""
     recs = read_log_records(state_path)
     last_title = last_icon = None
-    chat = []
+    timeline = []
     for r in recs:
         rt = r.get("type")
         if rt == "title":
             last_title = r
         elif rt == "icon":
             last_icon = r
-        elif rt in ("msg", "system", "attach"):
-            chat.append(r)
-    chat = chat[-replay_max:]
+        elif rt in ("msg", "system", "attach", "activity"):
+            timeline.append(r)
+    timeline = timeline[-replay_max:]
     sent = 0
+    for r in timeline:
+        try:
+            republish_record(state, r)
+            sent += 1
+            time.sleep(throttle)
+        except Exception:
+            pass
     for r in (last_title, last_icon):
         if r:
             try:
@@ -565,13 +579,6 @@ def replay_history(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
                 time.sleep(throttle)
             except Exception:
                 pass
-    for r in chat:
-        try:
-            republish_record(state, r)
-            sent += 1
-            time.sleep(throttle)
-        except Exception:
-            pass
     # sync-done marker (clients ignore unknown types; useful for tests/tools)
     try:
         publish_envelope(state["server"], state["topic"], {
@@ -756,6 +763,7 @@ def publish_activity(sess, cid, kind, text):
     while len(json.dumps(env, separators=(",", ":")).encode("utf-8")) > 3500 and env["text"]:
         env["text"] = env["text"][: max(1, len(env["text"]) // 2)]
     publish_envelope(sess["server"], sess["topic"], env)
+    return env
 
 
 def tail_transcript(state, args):
@@ -857,7 +865,14 @@ def tail_transcript(state, args):
                     if not text:
                         continue
                     try:
-                        publish_activity(state, cid, kind, text)
+                        aenv = publish_activity(state, cid, kind, text)
+                        # log so a late-joining client can replay the activity feed
+                        append_log(args.state, {
+                            "type": "activity", "role": "agent",
+                            "kind": aenv.get("kind", kind), "mid": aenv["mid"],
+                            "cid": cid, "text": aenv.get("text", text),
+                            "ts": aenv.get("ts") or now_ms(),
+                        })
                         published += 1
                         time.sleep(args.throttle)  # be nice to the relay
                     except Exception:
@@ -1084,6 +1099,19 @@ def cmd_history(args):
         print(json.dumps(env))
 
 
+def cmd_reload(args):
+    state = require_state(args)
+    env = {
+        "v": PROTOCOL_VERSION, "cid": state["cid"], "role": "agent",
+        "type": "reload", "mid": "reload-" + uuid.uuid4().hex[:8],
+        "seq": 0, "last": True, "ts": now_ms(),
+    }
+    if args.force:
+        env["force"] = True
+    publish_envelope(state["server"], state["topic"], env)
+    print(json.dumps({"reload": True, "force": bool(args.force)}))
+
+
 def cmd_serve(args):
     state = require_state(args)
     print(json.dumps({"serving": True, "topic": state["topic"],
@@ -1205,6 +1233,11 @@ def build_parser():
     rp = sub.add_parser("replay", help="re-broadcast the durable history now (manual sync)")
     rp.add_argument("--replay-max", type=int, default=REPLAY_MAX_DEFAULT)
     rp.set_defaults(func=cmd_replay)
+
+    rl = sub.add_parser("reload", help="tell connected clients to update to the latest app build")
+    rl.add_argument("--force", action="store_true",
+                    help="reload unconditionally instead of only when a newer build exists")
+    rl.set_defaults(func=cmd_reload)
     return p
 
 

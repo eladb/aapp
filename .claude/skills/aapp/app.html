@@ -278,6 +278,10 @@
 
   var STORE = "aapp:msgs:"+topic;
   var CID = "web-"+Math.random().toString(36).slice(2,10);
+  // Deploy stamps this with the commit sha (see pages workflow). Left as the
+  // literal placeholder when served unbuilt (e.g. raw repo file) -> auto-update
+  // stays off so an unstamped copy never reload-loops.
+  var BUILD = "__AAPP_BUILD__";
 
   // ---------- dom ----------
   var $=function(id){return document.getElementById(id)};
@@ -297,7 +301,18 @@
   function load(){
     try{ var raw=localStorage.getItem(STORE); if(raw){ var d=JSON.parse(raw);
       messages=d.messages||[]; cursor=d.cursor||"all";
-      messages.forEach(function(m){ byId[m.mid]=m; }); } }catch(e){}
+      // Rebuild the de-dupe indexes from persisted history so a history replay
+      // (which re-broadcasts messages we already have) is idempotent across a
+      // reload — otherwise attach/activity items could be inserted twice.
+      messages.forEach(function(m){
+        byId[m.mid]=m;
+        if(m.type==="activity"){ seenAct[m.mid]=true; }
+        else if(m.type==="attach"){ (seenParts[m.mid]=seenParts[m.mid]||new Set()).add(0); }
+        else if(m.type==="msg"||m.type==="system"){
+          var set=seenParts[m.mid]=seenParts[m.mid]||new Set();
+          Object.keys(m._parts||{0:1}).forEach(function(k){ set.add(+k); });
+        }
+      }); } }catch(e){}
   }
   var saveT=null;
   function save(){ if(saveT) return; saveT=setTimeout(function(){ saveT=null;
@@ -541,6 +556,7 @@
     if(type==="activity"){ addActivity(env, ntfyId); return; }
     if(type==="title"){ if(env.text) setAppName(env.text); return; }
     if(type==="icon"){ setAppIcon(env); return; }
+    if(type==="reload"){ if(role!=="user") handleReloadSignal(env); return; }
     if(type==="attach"){ addAttach(env, ntfyId); return; }
     if(role==="user" && type==="msg"){
       // our own user messages already shown optimistically; show if from elsewhere
@@ -857,6 +873,48 @@
     else { try{ applyIcon(renderGlyphIcon(curGlyph), curGlyph); }catch(e){} }
   })();
 
+  // ---------- self-update ----------
+  // The Pages build stamps BUILD with the commit sha and publishes a sibling
+  // version.json carrying the same sha. We poll it (on focus + periodically);
+  // when the deployed build differs from ours, a newer app is live, so we
+  // reload — cache-busting the URL so the CDN serves the fresh HTML. A
+  // sessionStorage guard keyed to the target build prevents reload loops. The
+  // agent can also push an update instantly with `bridge.py reload`.
+  function buildStamped(){ return BUILD && BUILD.indexOf("__")!==0; }
+  var lastUpdCheck=0;
+  function doReload(latest){
+    try{ sessionStorage.setItem("aapp:reloadedFor", latest); }catch(e){}
+    var base=location.href.split("#")[0].split("?")[0], hash=location.hash||"";
+    location.replace(base+"?v="+encodeURIComponent(latest)+hash);
+  }
+  function checkForUpdate(force){
+    if(!buildStamped() && !force) return;
+    var now=Date.now();
+    if(!force && now-lastUpdCheck<60000) return;      // throttle background checks
+    lastUpdCheck=now;
+    var url;
+    try{ url=new URL("version.json", location.href).href.split("#")[0]; }catch(e){ return; }
+    fetch(url+"?_="+now, {cache:"no-store"})
+      .then(function(r){ return r.ok?r.json():null; })
+      .then(function(j){
+        if(!j) return;
+        var latest=String(j.build||"");
+        if(!latest || latest===BUILD) return;          // up to date / unknown
+        var tried; try{ tried=sessionStorage.getItem("aapp:reloadedFor"); }catch(e){}
+        if(tried===latest) return;                     // already tried this build
+        doReload(latest);
+      })
+      .catch(function(){});
+  }
+  function handleReloadSignal(env){
+    if(env && env.force){
+      var t=0; try{ t=+(sessionStorage.getItem("aapp:lastForceReload")||0); }catch(e){}
+      if(Date.now()-t<20000) return;                   // ignore rapid repeats
+      try{ sessionStorage.setItem("aapp:lastForceReload", String(Date.now())); }catch(e){}
+      location.reload();
+    } else { checkForUpdate(true); }                   // reload only if newer
+  }
+
   // ---------- boot ----------
   if(!topic){
     setConnected("offline");
@@ -885,8 +943,13 @@
   setTimeout(requestSync, 900);
   setTimeout(requestSync, 5000);
 
+  // auto-update: check shortly after boot, whenever the app regains focus, and
+  // periodically while open
+  setTimeout(function(){ checkForUpdate(false); }, 2500);
+  setInterval(function(){ checkForUpdate(false); }, 15*60*1000);
+
   // gentle heartbeat: refresh relative day separators & keep-alive nudge
-  document.addEventListener("visibilitychange", function(){ if(!document.hidden){ if(atBottom) scrollToBottom(true); } });
+  document.addEventListener("visibilitychange", function(){ if(!document.hidden){ if(atBottom) scrollToBottom(true); checkForUpdate(false); } });
 })();
 </script>
 </body>

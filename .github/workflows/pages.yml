@@ -40,6 +40,11 @@ jobs:
           mkdir -p _site
           cp -r site/. _site/                            # landing page + assets (screenshot)
           cp .claude/skills/aapp/app.html _site/app.html # the chat app
+          # Stamp the build id (commit sha) into the app and a sibling
+          # version.json so the client can detect a newer deploy and auto-update.
+          BUILD="${GITHUB_SHA}"
+          sed -i "s/__AAPP_BUILD__/${BUILD}/g" _site/app.html
+          printf '{"build":"%s"}\n' "${BUILD}" > _site/version.json
       - uses: actions/configure-pages@v5
         with:
           enablement: true

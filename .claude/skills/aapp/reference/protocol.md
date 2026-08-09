@@ -26,8 +26,9 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "sync" | "sync-done",
+  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "sync" | "sync-done" | "reload",
   "replay": true,             // present on history re-broadcasts (see Durable history)
+  "force": true,              // for type=reload (reload unconditionally)
   "kind": "assistant" | "tool" | "user",   // for type=activity only
   "emoji": "🚀",              // for type=icon (emoji rendered to the icon)
   "url": "https://…|data:…",  // for type=icon / type=attach (image or file URL)
@@ -78,17 +79,35 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   answers by re-broadcasting its log; other clients ignore it.
 - **`sync-done`** — marks the end of a replay batch (carries a `count`).
   Informational; clients ignore it.
+- **`reload`** — asks connected clients to update to the latest deployed app
+  build (`bridge.py reload`). Without `force`, the client re-checks the deployed
+  version and reloads only if it changed; with `force:true` it reloads
+  immediately. See **Auto-update** below.
+
+## Auto-update
+
+The Pages build stamps the app with a **build id** (the commit sha): `app.html`
+carries `var BUILD = "<sha>"` and a sibling `version.json` (`{"build":"<sha>"}`)
+is published alongside it. The client polls `version.json` (on boot, on regaining
+focus, and every ~15 min); when the deployed build differs from its own `BUILD`,
+a newer app is live, so it reloads via a cache-busted URL (`…?v=<sha>#…`), with a
+`sessionStorage` guard keyed to the target build to prevent reload loops. An
+unstamped copy (served outside the Pages build, so `BUILD` is still the literal
+placeholder) keeps auto-update off. The agent can also push an update instantly
+with `bridge.py reload` (a `reload` envelope).
 
 ## Durable history
 
 The relay only caches ~12h, so a late-joining client can't rebuild older
 history from it. The agent therefore keeps an authoritative append-only log of
 chat envelopes (`<state>.log.jsonl`: agent `msg`/`system`/`attach`/`title`/
-`icon` and each inbound user `msg`/`attach`). When a client boots it publishes a
-`sync` request; the always-on responder (`bridge.py serve`, folded into `tail`)
-re-broadcasts the log — most-recent title+icon, then up to ~300 recent chat
-messages in order — each envelope tagged **`replay:true`** and carrying its
-**original `mid`**. Consequences:
+`icon`/`activity` and each inbound user `msg`/`attach`). When a client boots it
+publishes a `sync` request; the always-on responder (`bridge.py serve`, folded
+into `tail`) re-broadcasts the log — the last ~400 timeline items (chat messages,
+attachments, **and activity lines**, in the order they happened) then the latest
+title+icon — each envelope tagged **`replay:true`** and carrying its **original
+`mid`**. So a late-joining device rebuilds the whole view, including the activity
+feed. Consequences:
 
 - Connected clients **de-dupe by `mid`**, so a replay never double-renders for
   someone who already has the messages.
