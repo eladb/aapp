@@ -5,6 +5,7 @@ name: Deploy aapp to GitHub Pages
 # avoids Jekyll's exclusion of dot-folders like .claude/.
 # Requires Pages Source = "GitHub Actions" (Settings -> Pages); the Actions
 # token cannot enable Pages itself, so that toggle is a one-time manual step.
+# (re-trigger nudge: prior run wedged in GitHub's queue)
 
 on:
   push:
