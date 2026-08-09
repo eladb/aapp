@@ -34,6 +34,12 @@ of this **yourself, with no questions** — pick sensible defaults and go:
    (`bridge.py tail` — transcript auto-detected) and the wait loop, then hand the
    user the link with "open in Safari → **Add to Home Screen**."
 
+> **Always share an aapp link as a Markdown link**, never a bare URL — label it
+> with the app/session name so it's tappable and readable:
+> `[Nir Medical](https://…/app.html#s=https://ntfy.sh&t=aapp-…&n=Nir%20Medical)`.
+> A raw link full of `#`/`&`/`%20` is easy to mis-copy or truncate; the labeled
+> Markdown form isn't. This applies every time you surface the link.
+
 The app **shows session activity by default** — `install.sh` starts the tailer
 for you; if you ran the steps by hand, start `bridge.py tail` so the feed has
 something to show.
@@ -111,8 +117,10 @@ That prints the full shareable link, e.g.
 
 ### 3. Hand the link to the user
 
-Give them the URL and this one-liner:
+Give them the link **as a Markdown link labeled with the app/session name**
+(never a bare URL — see the directive above), plus this one-liner:
 
+> Here's your app: [My Session](https://…/app.html#s=https://ntfy.sh&t=aapp-…&n=My%20Session)
 > Open on your iPhone in Safari → **Share** → **Add to Home Screen** to install
 > it as an app. Messages you send go straight to this session.
 
