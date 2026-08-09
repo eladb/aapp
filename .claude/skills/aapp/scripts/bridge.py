@@ -1086,6 +1086,15 @@ def cmd_wait(args):
             except OSError:
                 pass
         sys.exit(22)  # distinct code: timed out with no message
+    # Acknowledge receipt immediately: publish a typing indicator the instant the
+    # message lands, so the app shows a "thinking" affordance right away instead
+    # of waiting for the agent's turn to start and call `typing on` itself. The
+    # agent clears it when it replies (`send --typing-off`).
+    if getattr(args, "ack", True) and msg.get("type") in ("msg", "attach"):
+        try:
+            send_signal(state, "typing", state="on")
+        except Exception:
+            pass
     line = json.dumps(msg)
     if args.out:
         with open(args.out, "w") as f:
@@ -1199,6 +1208,8 @@ def build_parser():
                    help="also write the message JSON to this file")
     w.add_argument("--follow", action="store_true",
                    help="also return user typing/status signals")
+    w.add_argument("--no-ack", dest="ack", action="store_false", default=True,
+                   help="don't auto-show a thinking indicator when a message arrives")
     w.set_defaults(func=cmd_wait)
 
     h = sub.add_parser("history", help="dump cached messages as JSON lines")

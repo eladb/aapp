@@ -138,10 +138,11 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
    breaks that and stops the pre-authorization rule (see *Permissions*) from
    matching, which is what makes the listener get blocked.
 2. **When it returns**, read the message JSON from the background task's output
-   and treat its `text` as a normal user request. Optionally show progress:
+   and treat its `text` as a normal user request. `wait` already published a
+   **thinking indicator** the instant the message arrived (the app also shows one
+   optimistically on send), so the user has immediate feedback — you don't need
+   to send `typing on` yourself. Optionally add progress detail:
    ```bash
-   python3 .claude/skills/aapp/scripts/bridge.py typing on
-   # …do the work in this session (edit files, run commands, answer)…
    python3 .claude/skills/aapp/scripts/bridge.py status --text "running tests…"
    ```
 3. **Reply**, clearing the typing indicator:

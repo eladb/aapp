@@ -50,8 +50,11 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   text would exceed the relay's ~4 KB body limit. Receivers buffer by `mid`
   and concatenate parts in `seq` order until `last` is seen. Appending parts as
   they arrive yields a streaming effect.
-- **`typing`** — ephemeral indicator; `state:"on"|"off"`. Not stored as a
-  message.
+- **`typing`** — ephemeral "thinking" indicator; `state:"on"|"off"`. Not stored
+  as a message. `bridge.py wait` auto-publishes `state:"on"` the moment a message
+  is received (unless `--no-ack`), and the app also shows it optimistically on
+  send, so the user sees activity immediately; the app self-expires it after
+  ~150s of silence so a dead session doesn't spin forever.
 - **`status`** — a transient one-line status (e.g. "running tests…"), shown
   briefly and not kept in history.
 - **`system`** — a persistent centered notice (e.g. an error banner).

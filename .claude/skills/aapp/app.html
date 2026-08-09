@@ -498,15 +498,26 @@
     if(atBottom) scrollToBottom(); save();
   }
 
-  // ---------- typing indicator ----------
+  // ---------- typing / "thinking" indicator ----------
+  // Safety expiry: the dots are a state (turned on, later cleared by the agent's
+  // reply). Re-armed on every agent signal so it survives long work, but if the
+  // session goes silent (e.g. it died) the indicator clears itself rather than
+  // spinning forever.
+  var thinkTimer=null;
+  function armThink(){ if(thinkTimer) clearTimeout(thinkTimer); thinkTimer=setTimeout(function(){ setTyping(false); }, 150000); }
+  function keepThinking(){ if(typingActive) armThink(); }
   function setTyping(on){
     typingActive=on;
     if(on){
+      armThink();
       if(typingEl) return;
       typingEl=document.createElement("div"); typingEl.className="row them";
       typingEl.innerHTML='<div class="bubble" style="padding:0"><div class="typing"><i></i><i></i><i></i></div></div>';
       listEl.appendChild(typingEl); if(atBottom) scrollToBottom();
-    } else if(typingEl){ typingEl.remove(); typingEl=null; }
+    } else {
+      if(thinkTimer){ clearTimeout(thinkTimer); thinkTimer=null; }
+      if(typingEl){ typingEl.remove(); typingEl=null; }
+    }
   }
   function moveTypingToEnd(){ if(typingEl){ listEl.appendChild(typingEl); } }
 
@@ -596,6 +607,7 @@
     var m={mid:mid, role:"activity", type:"activity", kind:env.kind||"tool", text:env.text||"", ts:env.ts||Date.now(), done:true};
     byId[mid]=m; messages.push(m);
     upsertRow(m); save(); pruneMemory();
+    keepThinking();   // work is happening -> keep the thinking indicator alive
   }
   function setAppName(nm){
     nm=(nm||"").trim(); if(!nm || nm===name) return;
@@ -608,6 +620,7 @@
   }
   function showStatus(text){
     if(!text) return;
+    keepThinking();   // a progress line means work is happening
     statusEl.textContent=text; dotEl.className="dot live";
     if(statusTimer) clearTimeout(statusTimer);
     statusTimer=setTimeout(function(){ setConnected(connState); },4000);
@@ -717,6 +730,8 @@
     // check also guards this, but be explicit)
     seenParts[m.mid]=new Set(built.envs.map(function(_,i){return i;}));
     upsertRow(m); save();
+    setTyping(true);   // instant "thinking" affordance; the agent's wait ack and
+                       // reply take over from here (self-expires if nothing comes)
     inputEl.value=""; autoGrow(); sendEl.disabled=true;
     try{
       for(var i=0;i<built.envs.length;i++){ await publish(built.envs[i]); }
@@ -770,6 +785,7 @@
            url:URL.createObjectURL(file), name:file.name, size:file.size, mine:true,
            ts:Date.now(), done:true, uploading:true};
     byId[mid]=m; messages.push(m); seenParts[mid]=new Set([0]); upsertRow(m); save();
+    setTyping(true);   // instant "thinking" affordance (see sendMessage)
     try{
       var blob=file, w=0, h=0;
       if(isImg){ var d=await downscaleImage(file, 1600, 0.85); blob=d.blob; w=d.w; h=d.h; m.mime="image/jpeg"; }
