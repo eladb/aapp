@@ -129,12 +129,16 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
 
 1. **Wait for a message** in the background so the turn ends until one arrives:
    ```bash
-   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 600 --out "$AAPP_STATE.msg"
+   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 600
    ```
-   Run this with your background-execution tool. It exits when a user message
-   arrives (writing it to the `--out` file) or after the timeout (exit 22).
-2. **When it returns**, read the message and treat its `text` as a normal user
-   request. Optionally show progress:
+   Run this with your background-execution tool. It prints the message as JSON to
+   **stdout** (which your background tool captures) when one arrives, or exits 22
+   on timeout. **Run it exactly as written — no `VAR=… ` env-var prefix.** The
+   session-scoped state file is auto-detected, and a leading env assignment both
+   breaks that and stops the pre-authorization rule (see *Permissions*) from
+   matching, which is what makes the listener get blocked.
+2. **When it returns**, read the message JSON from the background task's output
+   and treat its `text` as a normal user request. Optionally show progress:
    ```bash
    python3 .claude/skills/aapp/scripts/bridge.py typing on
    # …do the work in this session (edit files, run commands, answer)…
@@ -148,6 +152,38 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
 4. **Re-launch the wait** and continue. On a timeout with no message (exit 22),
    just start another wait. Keep going until the user says to stop, then send a
    final message and end the loop.
+
+### Permissions (why the listener can get blocked)
+
+The inbound path is a background process that pulls instructions from a public
+URL — the shape of a remote-control channel — so Claude Code's guardrails often
+block it (and `curl … | bash` installers) until it's explicitly permitted,
+especially on Claude Code for web/remote. Grant it consciously (a tool shouldn't
+silently self-authorize):
+
+- **Allow the bridge once.** In the session run `/permissions` and allow — or add
+  to `.claude/settings.json` / `.claude/settings.local.json` (Claude Code
+  hot-reloads it):
+  ```json
+  { "permissions": { "allow": [
+      "Bash(python3 .claude/skills/aapp/scripts/bridge.py:*)",
+      "Bash(.claude/skills/aapp/scripts/bridge.py:*)"
+  ] } }
+  ```
+  This authorizes the **transport only** — running `bridge.py` to receive a
+  message or stream the feed. It does **not** approve the actions the agent takes
+  in response (edits, other commands); those still go through normal permission
+  checks. (`install.sh` prints this reminder but deliberately does **not** write
+  it for you.)
+- **Invoke `bridge.py` with no env-var prefix** (as in the loop above). A
+  leading `VAR=… ` assignment stops the allow rule from matching, so the command
+  falls back to a prompt/deny.
+
+If a session runs in a stricter *auto* safety mode, an allow rule may still be
+re-checked by a safety classifier — a second, independent gate that a permission
+rule can't override, by design. If the listener is still blocked, run it in a
+terminal that has this session, or approve it when prompted — the outbound
+activity feed keeps working regardless.
 
 ### Optional: stream the whole session as an activity feed
 

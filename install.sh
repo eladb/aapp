@@ -38,6 +38,7 @@ rm -rf "$DEST"
 cp -r "$tmp/src/.claude/skills/aapp" "$DEST"
 echo "  ✓ installed to ${DEST}"
 
+
 # --- publish: mint a session + link (canonical hosted app, session name) ---
 # Scope state to THIS session so separate sessions never share a topic.
 _sid="${CLAUDE_CODE_SESSION_ID:-${CLAUDE_CODE_REMOTE_SESSION_ID:-default}}"
@@ -69,3 +70,10 @@ echo "   ${LINK}"
 echo
 echo "State file: ${AAPP_STATE}"
 echo "Invoke the aapp skill so the agent starts answering messages from the app."
+echo
+echo "Heads up: to RECEIVE messages you send from the phone, the agent runs a"
+echo "background listener (bridge.py wait). Claude Code may block that until you"
+echo "allow it — in the session, run /permissions and allow:"
+echo "   Bash(python3 ${DEST}/scripts/bridge.py:*)"
+echo "This authorizes the message transport only, not the actions the agent takes"
+echo "in response. The outbound activity feed already works without it."
