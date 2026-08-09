@@ -5,203 +5,412 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>aapp — chat with your coding agent from your phone</title>
 <meta name="description" content="aapp turns any Claude Code session into a public, installable chat app. One paste, one link. No server, no account.">
-<meta name="theme-color" content="#09090b">
+<meta name="theme-color" content="#08080a">
+<meta property="og:type" content="website">
 <meta property="og:title" content="aapp — chat with your coding agent from your phone">
 <meta property="og:description" content="Turn any Claude Code session into a public, installable chat app. One paste, one link.">
 <meta property="og:image" content="https://aapp.run/app-screenshot.png">
+<meta property="og:image:width" content="390">
+<meta property="og:image:height" content="620">
 <meta property="og:url" content="https://aapp.run/">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:image" content="https://aapp.run/app-screenshot.png">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%23141417'/%3E%3Cpath fill='%23ff6a4d' d='M12 4c3.3 0 6 2.5 6 5.8 0 1.7-.7 3-1.6 4 .5.3 1 .9 1 1.7 0 1-.8 1.6-1.7 1.4.2.9-.3 1.8-1.2 1.9-.7.1-1.3-.3-1.6-.9-.3.7-1 .9-1.6.7-.6.2-1.3 0-1.6-.7-.3.6-.9 1-1.6.9-.9-.1-1.4-1-1.2-1.9-.9.2-1.7-.4-1.7-1.4 0-.8.5-1.4 1-1.7C6.7 12.8 6 11.5 6 9.8 6 6.5 8.7 4 12 4Zm-1.7 5.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z'/%3E%3C/svg%3E">
 <script>
   // Old session links point at the site root (…/#t=…). Send them to the app.
   (function(){ var h=location.hash||""; if(/[#&]t=/.test(h)){ location.replace("app.html"+h); } })();
 </script>
 <style>
   :root{
-    --bg:#09090b; --bg2:#0f0f11; --card:#141416; --ink:#fafafa; --muted:#a1a1aa;
-    --dim:#71717a; --line:#27272a; --line2:#1c1c1f; --pri:#fafafa; --pri-ink:#09090b;
-    --radius:14px; --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+    --bg:#08080a; --bg2:#0f0f12; --card:#141417; --card2:#17171b;
+    --ink:#fafafa; --muted:#a1a1aa; --dim:#8a8a94;
+    --line:#26262a; --line2:#1b1b1e;
+    --acc:#ff6a4d; --acc-bright:#ff8163; --acc-dim:rgba(255,106,77,.14);
+    --acc-line:rgba(255,106,77,.4);
+    --live:#22c55e;
+    --pri-ink:#160805;
+    --radius:14px;
     --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box}
   html{scroll-behavior:smooth}
   body{
     margin:0; background:var(--bg); color:var(--ink); font-family:var(--sans);
-    line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden;
+    line-height:1.6; font-weight:400; -webkit-font-smoothing:antialiased; overflow-x:hidden;
   }
   a{color:inherit; text-decoration:none}
   .wrap{max-width:1080px; margin:0 auto; padding:0 22px}
-  /* subtle top glow */
+
+  /* skip link */
+  .skip{position:absolute; left:-9999px; top:0; z-index:100; background:var(--card);
+    color:var(--ink); padding:10px 16px; border:1px solid var(--acc); border-radius:10px; margin:8px}
+  .skip:focus{left:0}
+
+  :focus-visible{outline:2px solid var(--acc-bright); outline-offset:2px; border-radius:6px}
+
+  /* glows (used twice on purpose — hero + features — to keep it special) */
   .glow{position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:0}
-  .glow::before{content:""; position:absolute; top:-340px; left:50%; transform:translateX(-50%);
-    width:900px; height:600px; background:radial-gradient(closest-side, rgba(120,120,160,.18), transparent 70%); filter:blur(10px)}
+  .glow.hero::before{content:""; position:absolute; top:-260px; left:50%;
+    width:820px; height:560px; margin-left:-410px;
+    background:radial-gradient(closest-side, rgba(255,106,77,.20), transparent 70%);
+    filter:blur(12px); animation:drift 18s ease-in-out infinite alternate}
+  .glow.soft::before{content:""; position:absolute; top:50%; left:50%;
+    width:720px; height:480px; margin:-240px 0 0 -360px;
+    background:radial-gradient(closest-side, var(--acc-dim), transparent 72%); filter:blur(14px)}
+  @keyframes drift{
+    0%{transform:translate(-8px,0); opacity:.75}
+    100%{transform:translate(8px,10px); opacity:1}
+  }
+
   /* nav */
-  nav{position:sticky; top:0; z-index:10; backdrop-filter:saturate(1.2) blur(10px);
+  nav{position:sticky; top:0; z-index:20; backdrop-filter:saturate(1.2) blur(10px);
     background:color-mix(in srgb, var(--bg) 78%, transparent); border-bottom:1px solid var(--line2)}
-  .nav{display:flex; align-items:center; justify-content:space-between; height:60px}
-  .brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em}
-  .mark{width:28px; height:28px; border-radius:8px; display:grid; place-items:center;
-    background:linear-gradient(135deg,#3f3f46,#18181b); border:1px solid var(--line); font-size:15px}
-  .nav .links{display:flex; align-items:center; gap:8px}
-  .ghost{color:var(--muted); padding:8px 12px; border-radius:10px; font-size:14px; font-weight:500}
-  .ghost:hover{color:var(--ink); background:var(--card)}
+  .nav{display:flex; align-items:center; justify-content:space-between; height:62px; gap:14px}
+  .brand{display:flex; align-items:center; gap:10px; font-weight:700; letter-spacing:-.02em; font-size:16px}
+  .mark{width:30px; height:30px; border-radius:9px; display:grid; place-items:center; color:var(--acc);
+    background:linear-gradient(135deg,#1d1d21,#131316); border:1px solid var(--line);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05)}
+  .nav .links{display:flex; align-items:center; gap:4px}
+  .ghost{color:var(--muted); padding:9px 12px; border-radius:10px; font-size:14px; font-weight:500;
+    min-height:44px; display:inline-flex; align-items:center; gap:5px; transition:.15s}
+  .ghost:hover{color:var(--acc-bright); background:var(--card)}
+  .nav-hide{display:inline-flex}
+  @media (max-width:680px){ .nav-hide{display:none} }
+
   /* buttons */
-  .btn{display:inline-flex; align-items:center; gap:8px; padding:11px 18px; border-radius:11px;
-    font-weight:600; font-size:15px; border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; transition:.15s}
-  .btn:hover{border-color:#3f3f46; background:#17171a}
-  .btn.pri{background:var(--pri); color:var(--pri-ink); border-color:var(--pri)}
-  .btn.pri:hover{opacity:.9}
+  .btn{display:inline-flex; align-items:center; justify-content:center; gap:8px; padding:12px 18px;
+    border-radius:11px; font-weight:600; font-size:15px; min-height:44px;
+    border:1px solid var(--line); background:var(--card); color:var(--ink); cursor:pointer; transition:.15s}
+  .btn:hover{border-color:#3a3a40; background:var(--card2)}
+  .btn.pri{font-weight:700; color:var(--pri-ink); border-color:var(--acc);
+    background:linear-gradient(180deg,var(--acc-bright),var(--acc));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.28), 0 8px 30px rgba(255,106,77,.32)}
+  .btn.pri:hover{filter:brightness(1.04); border-color:var(--acc-bright);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.32), 0 10px 36px rgba(255,106,77,.48)}
+  .btn.sm{padding:9px 14px; font-size:14px; min-height:40px}
+  .btn.ghostlink{background:transparent; border-color:transparent; color:var(--muted); box-shadow:none}
+  .btn.ghostlink:hover{color:var(--acc-bright); background:transparent; border-color:transparent}
+  .btn svg{flex:0 0 auto}
+
   /* hero */
-  header.hero{position:relative; padding:74px 0 30px; text-align:center}
+  header.hero{position:relative; padding:70px 0 40px}
+  .hero-grid{display:grid; grid-template-columns:1fr; gap:44px; align-items:center}
+  .hero-copy{position:relative; z-index:1; text-align:center}
   .eyebrow{display:inline-flex; align-items:center; gap:8px; font-size:12.5px; color:var(--muted);
-    border:1px solid var(--line); background:var(--card); padding:5px 12px; border-radius:999px; margin-bottom:22px}
-  .eyebrow b{color:var(--ink); font-weight:600}
-  h1{font-size:clamp(34px,6.2vw,60px); line-height:1.03; letter-spacing:-.035em; font-weight:800; margin:0 auto 18px; max-width:15ch}
-  .lede{font-size:clamp(16px,2.4vw,20px); color:var(--muted); max-width:56ch; margin:0 auto 26px}
-  .cta{display:flex; gap:12px; justify-content:center; flex-wrap:wrap}
-  .subnote{margin-top:16px; font-size:13px; color:var(--dim)}
+    border:1px solid var(--acc-line); background:var(--card); padding:6px 14px; border-radius:999px; margin-bottom:22px}
+  .eyebrow b{color:var(--ink); font-weight:700}
+  h1{font-size:clamp(38px,6.5vw,66px); line-height:1.02; letter-spacing:-.04em; font-weight:800;
+    margin:0 0 18px; max-width:16ch; margin-inline:auto}
+  .lede{font-size:clamp(17px,2.4vw,21px); color:var(--muted); max-width:54ch; margin:0 auto 28px}
+  .cta{display:flex; gap:14px; justify-content:center; flex-wrap:wrap; align-items:center}
+  .subnote{margin-top:18px; font-size:13px; color:var(--dim)}
   .subnote b{color:var(--muted); font-weight:600}
-  /* terminal */
-  .term{position:relative; z-index:1; max-width:640px; margin:30px auto 0; text-align:left;
-    background:#0c0c0e; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden; box-shadow:0 24px 60px rgba(0,0,0,.5)}
-  .term .bar{display:flex; align-items:center; gap:7px; padding:11px 14px; border-bottom:1px solid var(--line2)}
-  .term .bar i{width:11px; height:11px; border-radius:50%; background:#3f3f46; display:inline-block}
-  .term .bar .t{margin-left:8px; font-size:12px; color:var(--dim); font-family:var(--mono)}
-  .term pre{margin:0; padding:16px 16px; font-family:var(--mono); font-size:13.5px; line-height:1.7; color:#e4e4e7; overflow-x:auto}
-  .term .p{color:#7cc8a6}
-  .term .c{color:var(--dim)}
-  .copy{position:absolute; top:9px; right:10px; font-size:12px; color:var(--muted); background:var(--card);
-    border:1px solid var(--line); border-radius:8px; padding:5px 10px; cursor:pointer}
-  .copy:hover{color:var(--ink)}
-  .term .bar .mk{color:var(--muted); font-size:14px; line-height:1}
-  .term.prompt pre{font-family:var(--sans); color:#e4e4e7; white-space:pre-wrap; font-size:14px; line-height:1.65}
-  /* hero showcase (phone) */
-  .showcase{position:relative; z-index:1; display:flex; justify-content:center; margin:56px auto 0}
-  .phone{width:290px; border:10px solid #18181b; border-radius:42px; background:#0b0b0d; box-shadow:0 30px 80px rgba(0,0,0,.6);
-    overflow:hidden}
-  .phone .shot{display:block; width:100%; height:auto}
-  .phone .scr{background:var(--bg); height:520px; display:flex; flex-direction:column}
-  .ph-h{display:flex; align-items:center; gap:9px; padding:14px 14px 12px; border-bottom:1px solid var(--line2)}
-  .ph-av{width:32px; height:32px; border-radius:9px; background:#18181b; border:1px solid var(--line); display:grid; place-items:center; font-size:16px}
-  .ph-h b{font-size:14px} .ph-h .on{display:flex; align-items:center; gap:5px; font-size:11px; color:var(--muted)}
-  .ph-h .dot{width:6px; height:6px; border-radius:50%; background:#22c55e}
-  .ph-b{flex:1; padding:14px 12px; display:flex; flex-direction:column; gap:8px; overflow:hidden}
-  .msg{max-width:82%; padding:8px 11px; border-radius:15px; font-size:13px; line-height:1.45}
-  .msg.them{align-self:flex-start; background:var(--card); border:1px solid var(--line); border-bottom-left-radius:6px}
-  .msg.me{align-self:flex-end; background:var(--pri); color:var(--pri-ink); border-bottom-right-radius:6px}
-  .act{align-self:stretch; display:flex; gap:7px; font-size:11.5px; color:var(--muted); padding:0 2px}
-  .act .ln{border-left:2px solid var(--line); padding-left:8px; font-family:var(--mono); font-size:11px}
-  .ph-c{border-top:1px solid var(--line2); padding:10px; display:flex; gap:8px}
-  .ph-c .in{flex:1; border:1px solid var(--line); border-radius:11px; padding:8px 12px; font-size:12.5px; color:var(--dim)}
-  .ph-c .snd{width:34px; height:34px; border-radius:10px; background:var(--pri); color:var(--pri-ink); display:grid; place-items:center; font-weight:700}
+
+  /* phone */
+  .hero-phone{position:relative; z-index:1; display:flex; justify-content:center}
+  .phone-spot{position:absolute; inset:0; z-index:0; pointer-events:none}
+  .phone-spot::before{content:""; position:absolute; top:50%; left:50%; width:420px; height:520px;
+    margin:-260px 0 0 -210px; background:radial-gradient(closest-side, var(--acc-dim), transparent 70%); filter:blur(10px)}
+  .phone{position:relative; z-index:1; width:min(290px,100%); max-width:100%;
+    border:10px solid #17171b; border-radius:42px; background:#0b0b0d;
+    box-shadow:0 30px 80px rgba(0,0,0,.6), inset 0 1px 0 rgba(255,255,255,.06); overflow:hidden}
+  .phone .island{position:absolute; top:16px; left:50%; transform:translateX(-50%); z-index:3;
+    width:96px; height:26px; background:#000; border-radius:16px; box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+  .phone .shot{display:block; width:100%; height:auto; position:relative; z-index:1}
+  .phone .screenglow{position:absolute; top:0; left:0; right:0; height:120px; z-index:2; pointer-events:none;
+    background:linear-gradient(180deg, rgba(255,255,255,.05), transparent)}
+  .thinking{position:absolute; z-index:4; left:12px; top:38%;
+    display:inline-flex; align-items:center; gap:8px; padding:7px 12px;
+    background:rgba(20,20,23,.92); border:1px solid var(--acc-dim); border-radius:14px;
+    font-size:12px; color:var(--muted); backdrop-filter:blur(4px);
+    box-shadow:0 6px 20px rgba(0,0,0,.5)}
+  .thinking .dots{display:inline-flex; gap:3px}
+  .thinking .dots i{width:5px; height:5px; border-radius:50%; background:var(--acc); display:block;
+    animation:bounce 1.2s ease-in-out infinite}
+  .thinking .dots i:nth-child(2){animation-delay:.18s}
+  .thinking .dots i:nth-child(3){animation-delay:.36s}
+  @keyframes bounce{0%,60%,100%{transform:translateY(0); opacity:.55} 30%{transform:translateY(-4px); opacity:1}}
+
+  @media (min-width:900px){
+    header.hero{padding:88px 0 60px}
+    .hero-grid{grid-template-columns:1.05fr .95fr; gap:56px}
+    .hero-copy{text-align:left}
+    h1{margin-inline:0}
+    .lede{margin-left:0; margin-right:0}
+    .cta{justify-content:flex-start}
+    .hero-phone{justify-content:flex-end}
+  }
+
   /* sections */
-  section{position:relative; z-index:1; padding:66px 0; border-top:1px solid var(--line2)}
-  .kicker{font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--dim); font-weight:600; margin-bottom:12px}
-  h2{font-size:clamp(24px,3.6vw,34px); letter-spacing:-.02em; font-weight:750; margin:0 0 12px}
-  .sub{color:var(--muted); max-width:60ch; margin:0 0 30px}
-  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:14px}
-  .feat{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px 18px 20px}
-  .feat .ic{width:36px; height:36px; border-radius:10px; background:#18181b; border:1px solid var(--line); display:grid; place-items:center; font-size:18px; margin-bottom:12px}
-  .feat h3{margin:0 0 6px; font-size:16px; font-weight:650; letter-spacing:-.01em}
-  .feat p{margin:0; color:var(--muted); font-size:14px}
-  /* how it works */
-  .flow{display:flex; align-items:stretch; gap:12px; flex-wrap:wrap}
-  .node{flex:1; min-width:180px; background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:18px; text-align:center}
-  .node .e{font-size:24px} .node b{display:block; margin-top:8px; font-size:15px} .node span{color:var(--muted); font-size:13px}
-  .arrow{align-self:center; color:var(--dim); font-size:22px}
+  section{position:relative; z-index:1; padding:72px 0; border-top:1px solid var(--line2)}
+  .kicker{font-size:12.5px; letter-spacing:.14em; text-transform:uppercase; color:var(--acc); font-weight:600; margin-bottom:12px}
+  h2{font-size:clamp(26px,3.8vw,38px); letter-spacing:-.025em; font-weight:700; margin:0 0 12px; line-height:1.08}
+  .sub{color:var(--muted); max-width:60ch; margin:0 0 34px; font-size:16px}
+
+  /* why strip — hero-adjacent, most depth */
+  .why{display:grid; grid-template-columns:1fr; gap:14px; margin-top:6px}
+  @media (min-width:760px){ .why{grid-template-columns:repeat(3,1fr)} }
+  .why-tile{background:linear-gradient(180deg,#171719,#131316); border:1px solid var(--line); border-radius:var(--radius);
+    padding:22px; box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 6px 20px rgba(0,0,0,.35)}
+  .why-tile .wi{width:38px; height:38px; border-radius:10px; display:grid; place-items:center; margin-bottom:14px;
+    color:var(--acc); background:var(--acc-dim); border:1px solid var(--acc-line)}
+  .why-tile p{margin:0; font-size:15px; color:var(--ink)}
+  .why-tile p b{font-weight:700}
+
+  /* install */
+  .term{position:relative; z-index:1; max-width:760px; margin:0; text-align:left;
+    background:#0c0c0e; border:1px solid var(--line); border-radius:var(--radius); overflow:hidden;
+    box-shadow:0 24px 60px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,255,255,.04)}
+  .term .bar{display:flex; align-items:center; gap:9px; padding:11px 14px; border-bottom:1px solid var(--line2)}
+  .term .bar .mk{color:var(--acc); font-size:14px; line-height:1; display:inline-flex}
+  .term .bar .t{font-size:12px; color:var(--dim); font-family:var(--mono)}
+  .term pre{margin:0; padding:18px 16px; font-family:var(--sans); font-size:14px; line-height:1.65;
+    color:#e4e4e7; white-space:pre-wrap; overflow-wrap:anywhere}
+  .copy{position:absolute; top:9px; right:10px; font-size:12px; color:var(--muted); background:var(--card);
+    border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:36px; cursor:pointer; transition:.15s}
+  .copy:hover{color:var(--acc-bright); border-color:var(--acc-line)}
+  .install-note{margin-top:16px; font-size:13px; color:var(--dim)}
+
+  /* features bento — hierarchy: heavy marquee > wide > regular */
+  .bento{display:grid; grid-template-columns:1fr; gap:14px}
+  @media (min-width:720px){ .bento{grid-template-columns:repeat(2,1fr)} }
+  @media (min-width:980px){ .bento{grid-template-columns:repeat(4,1fr)} }
+  .feat{position:relative; background:var(--card); border:1px solid var(--line2);
+    border-radius:var(--radius); padding:20px; transition:.18s;
+    box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .feat:hover{border-color:var(--acc-line); transform:translateY(-3px);
+    box-shadow:0 12px 30px rgba(0,0,0,.5)}
+  .feat .ic{width:38px; height:38px; border-radius:10px; display:grid; place-items:center;
+    margin-bottom:14px; color:var(--acc); background:var(--acc-dim); border:1px solid var(--acc-line)}
+  .feat h3{margin:0 0 7px; font-size:17px; font-weight:600; letter-spacing:-.01em}
+  .feat p{margin:0; color:var(--muted); font-size:14.5px; line-height:1.55}
+
+  /* wide (mid tier): spans two, stays light */
+  @media (min-width:720px){ .feat.wide{grid-column:span 2} }
+  .feat.wide h3{font-size:18px}
+
+  /* marquee (top tier): spans two, heavier, coral gradient border + more depth */
+  @media (min-width:720px){ .feat.marquee{grid-column:span 2} }
+  .feat.marquee{background:linear-gradient(180deg,#1a1a1f,#141417);
+    border:1px solid transparent; background-clip:padding-box; padding:24px;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.05), 0 14px 34px rgba(0,0,0,.45)}
+  .feat.marquee::before{content:""; position:absolute; inset:0; border-radius:var(--radius); padding:1px;
+    background:linear-gradient(135deg, rgba(255,106,77,.55), rgba(255,106,77,.06) 62%);
+    -webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite:xor; mask-composite:exclude; pointer-events:none}
+  .feat.marquee .ic{width:42px; height:42px}
+  .feat.marquee h3{font-size:19px; font-weight:700}
+  .feat.marquee p{font-size:15px}
+
+  /* how it works — medium tier */
+  .flow{display:flex; align-items:center; justify-content:center; gap:14px; flex-wrap:wrap}
+  .node{flex:1; min-width:160px; max-width:260px; background:linear-gradient(180deg,#161619,#141417);
+    border:1px solid var(--line); border-radius:var(--radius); padding:24px 18px; text-align:center;
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+  .node .chip{width:52px; height:52px; border-radius:50%; margin:0 auto 12px; display:grid; place-items:center;
+    color:var(--acc); background:var(--acc-dim); border:1px solid var(--acc-line)}
+  .node b{display:block; font-size:15px; font-weight:600} .node span{color:var(--muted); font-size:13px}
+  .arrow{color:var(--acc); flex:0 0 auto; display:inline-flex}
+  @media (max-width:620px){ .flow{flex-direction:column} .node{max-width:100%; width:100%} .arrow{transform:rotate(90deg)} }
+
+  /* faq — quietest: flat, no depth */
+  .faq{display:grid; grid-template-columns:1fr; gap:12px; max-width:800px}
+  .qa{background:var(--bg2); border:1px solid var(--line2); border-radius:var(--radius);
+    padding:18px 20px}
+  .qa h3{margin:0 0 7px; font-size:16px; font-weight:600; letter-spacing:-.01em}
+  .qa p{margin:0; color:var(--muted); font-size:14.5px; line-height:1.55}
+  .qa code{font-family:var(--mono); font-size:12.5px; color:var(--ink);
+    background:var(--card); border:1px solid var(--line2); border-radius:6px; padding:1px 6px}
+
   /* final */
   .final{text-align:center}
   .final h2{max-width:20ch; margin-inline:auto}
-  footer{border-top:1px solid var(--line2); padding:34px 0 60px; color:var(--dim); font-size:13.5px}
-  .foot{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:14px}
-  .foot .links{display:flex; gap:16px}
-  .foot a:hover{color:var(--ink)}
-  .badge{font-family:var(--mono); font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:3px 8px}
-  @media (max-width:640px){ .showcase{margin-top:44px} section{padding:52px 0} }
+  .final .sub{margin-inline:auto}
+
+  /* footer */
+  footer{border-top:1px solid var(--line2); padding:36px 0 60px; color:var(--dim); font-size:13.5px}
+  .foot{display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px}
+  .foot .brand{font-size:15px}
+  .foot .links{display:flex; gap:8px; align-items:center; flex-wrap:wrap}
+  .foot .links a{color:var(--muted); padding:10px 12px; min-height:44px; display:inline-flex; align-items:center; border-radius:8px; transition:.15s}
+  .foot .links a:hover{color:var(--acc-bright)}
+  .badge{font-family:var(--mono); font-size:12px; color:var(--muted); border:1px solid var(--line); border-radius:8px; padding:6px 9px}
+
+  /* reveal — progressive enhancement: visible by default, JS opts in to animation */
+  .reveal.js-reveal{opacity:0; transform:translateY(12px); transition:opacity .6s ease, transform .6s ease}
+  .reveal.js-reveal.in{opacity:1; transform:none}
+
+  @media (max-width:640px){ section{padding:56px 0} }
+
+  @media (prefers-reduced-motion: reduce){
+    *{animation:none!important; transition:none!important}
+    html{scroll-behavior:auto}
+    .reveal.js-reveal{opacity:1; transform:none}
+  }
 </style>
 </head>
 <body>
-<div class="glow"></div>
+<a class="skip" href="#main">Skip to content</a>
 
 <nav><div class="wrap nav">
-  <a class="brand" href="/aapp/"><span class="mark">◈</span> aapp</a>
+  <a class="brand" href="/">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3c3.3 0 6 2.5 6 5.8 0 1.7-.7 3-1.6 4 .5.3 1 .9 1 1.7 0 1-.8 1.6-1.7 1.4.2.9-.3 1.8-1.2 1.9-.7.1-1.3-.3-1.6-.9-.3.7-1 .9-1.6.7-.6.2-1.3 0-1.6-.7-.3.6-.9 1-1.6.9-.9-.1-1.4-1-1.2-1.9-.9.2-1.7-.4-1.7-1.4 0-.8.5-1.4 1-1.7C6.7 11.8 6 10.5 6 8.8 6 5.5 8.7 3 12 3Zm-1.7 5.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
+    </span> aapp
+  </a>
   <div class="links">
-    <a class="ghost" href="#features">Features</a>
-    <a class="ghost" href="#install">Install</a>
-    <a class="ghost" href="https://github.com/eladb/aapp">GitHub ↗</a>
+    <a class="ghost nav-hide" href="#how">How it works</a>
+    <a class="ghost nav-hide" href="#features">Features</a>
+    <a class="ghost nav-hide" href="#faq">FAQ</a>
+    <a class="ghost" href="https://github.com/eladb/aapp">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 19c-4 1.2-4-2-5.5-2.5M15 21v-2.9a2.4 2.4 0 0 0-.7-1.9c2.4-.3 4.7-1.2 4.7-5.2a4 4 0 0 0-1.1-2.8 3.7 3.7 0 0 0-.1-2.8s-.9-.3-2.9 1.1a10 10 0 0 0-5 0C7 4.4 6.1 4.7 6.1 4.7a3.7 3.7 0 0 0-.1 2.8A4 4 0 0 0 4.9 10.3c0 4 2.3 4.9 4.7 5.2a2.4 2.4 0 0 0-.7 1.8V21"/></svg>
+      GitHub
+    </a>
+    <a class="btn pri sm" href="#install">Get your link</a>
   </div>
 </div></nav>
 
-<header class="hero"><div class="glow"></div><div class="wrap">
-  <span class="eyebrow"><b>Open source</b> · MIT · a Claude Code skill</span>
-  <h1>Chat with your coding agent from your phone.</h1>
-  <p class="lede">aapp turns any Claude Code session into a public, installable chat app — no server, no account. One paste gives you a link; open it on your phone and talk to the agent in real time.</p>
-  <div class="cta">
-    <a class="btn pri" href="#install">Get started</a>
-    <a class="btn" href="https://github.com/eladb/aapp">★ Star on GitHub</a>
-  </div>
-  <div class="subnote">Works on <b>iOS &amp; Android</b> · Add to Home Screen · runs in locked-down sandboxes</div>
+<main id="main">
 
-  <div class="showcase">
-    <div class="phone"><img class="shot" src="app-screenshot.png" width="390" height="620"
-      alt="The aapp chat app running on a phone — talking to a live Claude Code session, with an activity feed and a rendered table"></div>
-  </div>
-</div></header>
+<header class="hero">
+  <div class="glow hero" aria-hidden="true"></div>
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="hero-copy reveal">
+        <span class="eyebrow"><b>Open source</b> · MIT · Claude Code skill</span>
+        <h1>Start it at your desk. Steer it from your phone.</h1>
+        <p class="lede">aapp turns any Claude Code session into a real chat app you install on your phone — talk to the agent in real time, watch it work, or hand someone the link and let them drive. One paste. No server, no account, free.</p>
+        <div class="cta">
+          <a class="btn pri" href="#install">Get your link →</a>
+          <a class="btn ghostlink" href="https://github.com/eladb/aapp">
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.8.85-4.2 4.1 1 5.75L12 16.9l-5.2 2.7 1-5.75-4.2-4.1 5.8-.85L12 3.5Z"/></svg>
+            Star on GitHub
+          </a>
+        </div>
+        <div class="subnote">Works on <b>iOS &amp; Android</b> · Add to Home Screen · HTTPS-only, no tunnel required.</div>
+      </div>
 
-<section id="install"><div class="wrap">
+      <div class="hero-phone reveal">
+        <div class="phone-spot" aria-hidden="true"></div>
+        <div class="phone">
+          <div class="island" aria-hidden="true"></div>
+          <div class="screenglow" aria-hidden="true"></div>
+          <img class="shot" src="app-screenshot.png" width="390" height="620"
+            alt="The aapp chat app running on a phone — talking to a live Claude Code session, with an activity feed and a rendered table">
+          <div class="thinking" aria-hidden="true">
+            <span class="dots"><i></i><i></i><i></i></span> thinking…
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section id="why"><div class="wrap reveal">
+  <div class="kicker">Why you'll want it</div>
+  <h2>Your desk isn't the only place you code.</h2>
+  <p class="sub">Start a task where you sit, keep it moving from anywhere — or share the link and let someone else drive.</p>
+  <div class="why">
+    <div class="why-tile">
+      <div class="wi" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M2 20h20M9.5 16l-.5 4M14.5 16l.5 4"/></svg></div>
+      <p><b>Kick off a long refactor</b>, then steer it from the couch.</p>
+    </div>
+    <div class="why-tile">
+      <div class="wi" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0-6 6c0 3.2-.9 4.7-1.8 5.8-.5.6 0 1.5.8 1.5h14c.8 0 1.3-.9.8-1.5C18.9 13.7 18 12.2 18 9a6 6 0 0 0-6-6Z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></div>
+      <p><b>Get pinged mid-run</b> and redirect the agent from the train.</p>
+    </div>
+    <div class="why-tile">
+      <div class="wi" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"/><path d="M3 20v-1c0-2.5 2.7-4 6-4s6 1.5 6 4v1"/><path d="M16 5.5a3 3 0 0 1 0 5.5M17 15c2.5.4 4 1.8 4 4v1"/></svg></div>
+      <p><b>Hand a teammate or client the link</b> and let them talk to it too.</p>
+    </div>
+  </div>
+</div></section>
+
+<section id="install"><div class="wrap reveal">
   <div class="kicker">One paste</div>
-  <h2>Paste one prompt into Claude Code.</h2>
-  <p class="sub">Drop this prompt into any Claude Code session. It installs the skill, names the app after your session, picks a fitting icon, starts the activity feed, and hands you a shareable link — no questions, nothing to deploy.</p>
+  <h2>Paste one prompt. Get a link.</h2>
+  <p class="sub">Drop this into any Claude Code session. It installs the skill, names the app after your session, picks an icon, starts the activity feed, and hands you a shareable link — no questions, nothing to deploy.</p>
   <div class="term prompt">
-    <div class="bar"><span class="mk">◈</span><span class="t">paste into Claude&nbsp;Code</span><button class="copy" id="cp">Copy prompt</button></div>
+    <div class="bar"><span class="mk" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 3c3.3 0 6 2.5 6 5.8 0 1.7-.7 3-1.6 4 .5.3 1 .9 1 1.7 0 1-.8 1.6-1.7 1.4.2.9-.3 1.8-1.2 1.9-.7.1-1.3-.3-1.6-.9-.3.7-1 .9-1.6.7-.6.2-1.3 0-1.6-.7-.3.6-.9 1-1.6.9-.9-.1-1.4-1-1.2-1.9-.9.2-1.7-.4-1.7-1.4 0-.8.5-1.4 1-1.7C6.7 11.8 6 10.5 6 8.8 6 5.5 8.7 3 12 3Zm-1.7 5.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg></span><span class="t">paste into Claude&nbsp;Code</span><button class="copy" id="cp">Copy prompt</button></div>
     <pre id="cmd">Install aapp from https://github.com/eladb/aapp and give me a link to chat with this Claude Code session from my phone.
 
 Run the installer — curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash — then name the app after this session, pick an emoji icon that fits what we're working on, start the activity feed, and post the shareable link. No questions.</pre>
   </div>
-  <p class="subnote" style="text-align:left">Prefer the shell? The prompt runs that same one-line installer.</p>
+  <p class="install-note">The prompt runs a one-line installer under the hood — nothing else to set up.</p>
 </div></section>
 
-<section id="features"><div class="wrap">
+<section id="features">
+  <div class="glow soft" aria-hidden="true"></div>
+  <div class="wrap reveal">
   <div class="kicker">What you get</div>
   <h2>A real app, not a webhook.</h2>
-  <p class="sub">Feature-rich, mobile-first, and private by design — the whole thing is one self-contained file.</p>
-  <div class="grid">
-    <div class="feat"><div class="ic">⚡</div><h3>One-paste install</h3><p>Paste the repo, get a link. The app shell is already hosted; your session lives in the URL fragment, so there's nothing to deploy.</p></div>
-    <div class="feat"><div class="ic">📲</div><h3>Installable PWA</h3><p>Add to Home Screen for a standalone app — its own icon and name, full-screen, no browser chrome.</p></div>
-    <div class="feat"><div class="ic">🛰️</div><h3>No server, no account</h3><p>Messaging rides the free ntfy.sh relay over plain HTTPS. Works even in locked-down sandboxes where tunnels are blocked.</p></div>
-    <div class="feat"><div class="ic">👀</div><h3>Live activity feed</h3><p>Watch the agent work — messages and compact tool-call lines stream in. Summaries only; raw output stays private. Toggle per device.</p></div>
-    <div class="feat"><div class="ic">🎨</div><h3>Live name &amp; icon</h3><p>The app mirrors the session name and a context-fit favicon — set an emoji and it updates the icon and avatar instantly.</p></div>
-    <div class="feat"><div class="ic">💬</div><h3>Feature-rich chat</h3><p>Markdown, tables, code blocks with copy, typing indicators, multi-user attribution, auto-reconnect, and on-device history.</p></div>
-    <div class="feat"><div class="ic">🔒</div><h3>Private by design</h3><p>The session token lives in the URL fragment — never sent to the host or CDN. Per-session topics never cross-talk.</p></div>
-    <div class="feat"><div class="ic">🌗</div><h3>Clean, theme-aware</h3><p>A neutral, shadcn-style interface that looks right in light and dark, tuned for iOS safe areas.</p></div>
+  <p class="sub">Mobile-first, real-time, and private by design — the whole client is one self-contained file.</p>
+  <div class="bento">
+    <div class="feat marquee"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3.5" width="10" height="15" rx="2"/><rect x="11.5" y="7" width="10" height="13.5" rx="2"/></svg></div><h3>Same conversation on every device</h3><p>One identity — the link is who you are. A durable log replays your recent history, chat and activity alike, to any new phone even past the relay's cache window. Every device converges on the same view.</p></div>
+    <div class="feat marquee"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></svg></div><h3>Watch it work, live</h3><p>The activity feed streams the agent's messages and compact tool-call lines as it runs. Summaries only; raw output stays private. Per-device toggle.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="8.5" cy="10" r="1.6"/><path d="m4 17 4.5-4.5a1.5 1.5 0 0 1 2 0L15 17M14 15l2-2a1.5 1.5 0 0 1 2 0l2 2"/></svg></div><h3>Send photos &amp; files</h3><p>Attach from camera or library; images render inline, other files as a download chip. Works both directions.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 4v5h-5"/></svg></div><h3>Auto-updating</h3><p>Open apps carry a build id and reload themselves the moment you ship a new build.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="10.5" width="15" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/><path d="M12 14.5v2.5"/></svg></div><h3>Private by fragment</h3><p>The session token lives in the URL fragment — never sent to the host or CDN, only to the relay.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><circle cx="12" cy="10" r="2"/><path d="M6.5 15.5a7 7 0 0 1 0-11M17.5 4.5a7 7 0 0 1 0 11M9 13a4 4 0 0 1 0-6M15 7a4 4 0 0 1 0 6"/></svg></div><h3>No server, no account, free</h3><p>Rides the free ntfy.sh relay over plain HTTPS. Works in locked-down sandboxes where tunnels are blocked.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M12 7.5v6M9 10.5h6M10.5 18.5h3"/></svg></div><h3>Installable PWA</h3><p>Add to Home Screen for a standalone app with its own icon, name, and full-screen chrome.</p></div>
+    <div class="feat"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.8L18.5 9.7l-4.6 1.9L12 16.5l-1.9-4.9L5.5 9.7l4.6-1.9L12 3Z"/><path d="M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2Z"/></svg></div><h3>Live name &amp; icon</h3><p>The app mirrors your session name and a context-fit emoji, updating avatar and title instantly.</p></div>
+    <div class="feat wide"><div class="ic" aria-hidden="true"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H9l-4 3.2V16H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Z"/><path d="M8 9.5h8M8 12.5h5"/></svg></div><h3>Rich, real-time chat</h3><p>Markdown, tables, code blocks with copy, an instant thinking indicator, and auto-reconnect when a sleeping phone wakes.</p></div>
   </div>
 </div></section>
 
-<section><div class="wrap">
+<section id="how"><div class="wrap reveal">
   <div class="kicker">How it works</div>
-  <h2>Phone ⇄ relay ⇄ agent.</h2>
-  <p class="sub">A per-session topic on a public relay connects the two. Both sides need only outbound HTTPS.</p>
+  <h2>Phone, relay, agent — nothing else.</h2>
+  <p class="sub">A per-session topic on a public relay links the two. Both sides need only outbound HTTPS — no tunnel, no ngrok, no port-forwarding.</p>
   <div class="flow">
-    <div class="node"><div class="e">📱</div><b>Your phone</b><span>the installed chat app</span></div>
-    <div class="arrow">⇄</div>
-    <div class="node"><div class="e">🛰️</div><b>ntfy.sh</b><span>public HTTPS relay</span></div>
-    <div class="arrow">⇄</div>
-    <div class="node"><div class="e">◈</div><b>The agent</b><span>your Claude Code session</span></div>
+    <div class="node">
+      <div class="chip" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10.5 18.5h3"/></svg></div>
+      <b>Your phone</b><span>the installed chat app</span>
+    </div>
+    <span class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M13 5l4 4-4 4M20 15H7M11 19l-4-4 4-4"/></svg></span>
+    <div class="node">
+      <div class="chip" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8"/><circle cx="12" cy="10" r="2"/><path d="M6.5 15.5a7 7 0 0 1 0-11M17.5 4.5a7 7 0 0 1 0 11M9 13a4 4 0 0 1 0-6M15 7a4 4 0 0 1 0 6"/></svg></div>
+      <b>ntfy.sh</b><span>public HTTPS relay</span>
+    </div>
+    <span class="arrow" aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9h13M13 5l4 4-4 4M20 15H7M11 19l-4-4 4-4"/></svg></span>
+    <div class="node">
+      <div class="chip" aria-hidden="true"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M13 15h4"/></svg></div>
+      <b>The agent</b><span>your Claude Code session</span>
+    </div>
   </div>
 </div></section>
 
-<section class="final"><div class="wrap">
+<section id="faq"><div class="wrap reveal">
+  <div class="kicker">Questions</div>
+  <h2>The things you're about to ask.</h2>
+  <div class="faq">
+    <div class="qa"><h3>Who can access the session?</h3><p>Anyone with the link — treat it like a password. Rotate the topic to kill access instantly.</p></div>
+    <div class="qa"><h3>What leaves my machine?</h3><p>The token rides in the URL fragment, so the host and CDN never see it. The relay only carries messages, over HTTPS.</p></div>
+    <div class="qa"><h3>Does it cost anything?</h3><p>No. It runs on the free public ntfy.sh relay — no account, no server.</p></div>
+    <div class="qa"><h3>Does it work in Claude Code on the web / sandboxes?</h3><p>Yes. It only needs outbound HTTPS, so it works where tunnels and raw TCP are blocked.</p></div>
+    <div class="qa"><h3>Is it really one file?</h3><p>The client is one self-contained <code>app.html</code>; the agent side is one stdlib Python bridge. MIT — read the whole thing in five minutes.</p></div>
+  </div>
+</div></section>
+
+<section class="final"><div class="wrap reveal">
   <div class="kicker">Open source</div>
   <h2>Don't like something? Fork it.</h2>
-  <p class="sub" style="margin-inline:auto">MIT licensed. One skill, one HTML file, one stdlib script. Read it, change it, ship it.</p>
-  <div class="cta">
+  <p class="sub">MIT licensed. One skill, one HTML file, one stdlib script. Read it, change it, ship it.</p>
+  <div class="cta" style="justify-content:center">
     <a class="btn pri" href="https://github.com/eladb/aapp">Browse the code</a>
-    <a class="btn" href="#install">Copy the installer</a>
+    <a class="btn" href="#install">Copy the install prompt</a>
   </div>
 </div></section>
 
+</main>
+
 <footer><div class="wrap foot">
-  <div class="brand"><span class="mark">◈</span> aapp</div>
+  <div class="brand">
+    <span class="mark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="M12 3c3.3 0 6 2.5 6 5.8 0 1.7-.7 3-1.6 4 .5.3 1 .9 1 1.7 0 1-.8 1.6-1.7 1.4.2.9-.3 1.8-1.2 1.9-.7.1-1.3-.3-1.6-.9-.3.7-1 .9-1.6.7-.6.2-1.3 0-1.6-.7-.3.6-.9 1-1.6.9-.9-.1-1.4-1-1.2-1.9-.9.2-1.7-.4-1.7-1.4 0-.8.5-1.4 1-1.7C6.7 11.8 6 10.5 6 8.8 6 5.5 8.7 3 12 3Zm-1.7 5.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg>
+    </span> aapp
+  </div>
   <div class="links">
     <a href="https://github.com/eladb/aapp">GitHub</a>
     <a href="https://github.com/eladb/aapp/blob/main/.claude/skills/aapp/SKILL.md">Docs</a>
@@ -211,6 +420,7 @@ Run the installer — curl -fsSL https://raw.githubusercontent.com/eladb/aapp/ma
 </div></footer>
 
 <script>
+  // Copy prompt
   document.getElementById("cp").addEventListener("click", function(){
     var t=document.getElementById("cmd").innerText.trim();
     function done(){ var b=document.getElementById("cp"); b.textContent="Copied!"; setTimeout(function(){b.textContent="Copy prompt";},1300); }
@@ -218,6 +428,23 @@ Run the installer — curl -fsSL https://raw.githubusercontent.com/eladb/aapp/ma
     else fallback();
     function fallback(){ var ta=document.createElement("textarea"); ta.value=t; ta.style.position="fixed"; ta.style.opacity="0"; document.body.appendChild(ta); ta.select(); try{document.execCommand("copy"); done();}catch(e){} ta.remove(); }
   });
+
+  // Scroll reveal — progressive enhancement.
+  // The page is fully visible with no JS. Only when motion is allowed do we
+  // opt each target into the hidden start state (.js-reveal) and animate it in.
+  (function(){
+    var reduce=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if(reduce||!("IntersectionObserver" in window)) return;
+    var els=[].slice.call(document.querySelectorAll(".reveal"));
+    els.forEach(function(e){ e.classList.add("js-reveal"); });
+    var io=new IntersectionObserver(function(entries){
+      entries.forEach(function(en){ if(en.isIntersecting){ en.target.classList.add("in"); io.unobserve(en.target); } });
+    },{rootMargin:"0px 0px -8% 0px", threshold:.08});
+    els.forEach(function(e){ io.observe(e); });
+    // Failsafe: never let a hidden element get stuck if the observer misfires —
+    // reveal anything still hidden shortly after load, no matter what.
+    setTimeout(function(){ els.forEach(function(e){ e.classList.add("in"); }); }, 1600);
+  })();
 </script>
 </body>
 </html>
