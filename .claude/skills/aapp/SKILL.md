@@ -45,7 +45,7 @@ for you; if you ran the steps by hand, start `bridge.py tail` so the feed has
 something to show.
 
 **No hosting step is needed:** the app is served from the canonical public build
-(`https://aapp.run/app.html`; the site root is a landing page that
+(`https://eladb.github.io/aapp/app.html`; the site root is a landing page that
 redirects any older `…/#t=…` session links to it) and the whole session lives in
 the URL fragment, so `bridge.py link` needs no `--app-url`. Don't ask which host,
 name, or icon — decide and go. (The detailed steps below are for custom setups.)

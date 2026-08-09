@@ -50,7 +50,7 @@ host the app, hand you the link, and then act as the other end of the chat.
 
 - **Phone apps (already-shared links / Home-Screen installs):** they update
   automatically — the app is served from one stable URL
-  (`https://aapp.run/app.html`; the site root is a landing page that
+  (`https://eladb.github.io/aapp/app.html`; the site root is a landing page that
   redirects older `…/#t=…` links to it), so a redeploy reaches every install on
   its next load. Just **reload**, or fully close and reopen the Home-Screen app to
   force a fresh fetch. The link never changes; nothing needs re-sharing. Live
