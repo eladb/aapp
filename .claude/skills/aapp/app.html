@@ -88,9 +88,7 @@
     background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); border-color:transparent;
     border-bottom-left-radius:calc(var(--radius) + 6px); border-bottom-right-radius:6px;
   }
-  .row.peer .bubble{background:hsl(var(--muted)); color:hsl(var(--foreground))}
   @keyframes pop{from{transform:translateY(4px); opacity:0} to{transform:none; opacity:1}}
-  .bubble .who{font-size:11px; font-weight:600; color:hsl(var(--muted-foreground)); margin-bottom:3px}
   .bubble .meta{font-size:10.5px; color:hsl(var(--muted-foreground)); margin-top:4px; text-align:right}
   .row.me .bubble .meta{color:hsl(var(--primary-foreground)/0.7)}
   .bubble p{margin:0 0 6px} .bubble p:last-child{margin-bottom:0}
@@ -388,7 +386,6 @@
 
   // ---------- rendering ----------
   function clearView(){ listEl.innerHTML=""; }
-  function peerLabel(cid){ cid=(cid||"").replace(/[^a-z0-9]/gi,""); return "Guest "+(cid.slice(-4).toUpperCase()||"—"); }
   function isChat(m){ return m.type==="msg" || m.type==="attach"; }
   function safeSrc(u){ return /^(https?:|blob:|data:image\/)/i.test(u||"") ? u : "#"; }
   function fmtSize(b){ if(b==null) return ""; if(b<1024) return b+" B"; if(b<1048576) return Math.round(b/1024)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
@@ -399,21 +396,22 @@
     return '<a class="filechip" href="'+safeSrc(m.url)+'" target="_blank" rel="noopener noreferrer" download><span class="fi">📄</span><span class="fn">'+esc(m.name||"file")+'</span><span class="fs">'+fmtSize(m.size)+'</span></a>';
   }
   function bubbleHTML(m){
-    var who = (m.role==="user" && m.mine===false) ? '<div class="who">'+esc(peerLabel(m.cid))+'</div>' : "";
     var inner;
     if(m.type==="attach"){ inner = attachHTML(m) + (m.text?('<p>'+esc(m.text).replace(/\n/g,"<br>")+'</p>'):""); }
     else if(m.role==="user"){ inner = "<p>"+esc(m.text).replace(/\n/g,"<br>")+"</p>"; }
     else { inner = renderMarkdown(m.text||""); }
     var status = (m.type==="attach" && m.uploading) ? "uploading… " : "";
-    return who + inner + '<div class="meta">'+status+fmtTime(m.ts)+'</div>';
+    return inner + '<div class="meta">'+status+fmtTime(m.ts)+'</div>';
   }
   function bubbleClass(m){ return "bubble"+((m.type==="attach" && /^image\//.test(m.mime||""))?" media":"")+(m.failed?" failed":""); }
   function makeRow(m){
-    var isUser=m.role==="user";
-    var mine=isUser && m.mine!==false;   // own (or legacy) user message -> right
-    var peer=isUser && m.mine===false;   // another participant's message -> left, labeled
+    // The link is the identity: anyone holding it is "you", so every user
+    // message renders the same (right-aligned) on every device — a phone and a
+    // tablet on the same link show an identical conversation. The agent is the
+    // other side (left). No per-device "mine" or per-sender peer labels.
+    var mine=m.role==="user";
     var row=document.createElement("div");
-    row.className="row "+(mine?"me":"them")+(peer?" peer":"");
+    row.className="row "+(mine?"me":"them");
     row.dataset.mid=m.mid;
     var b=document.createElement("div"); b.className=bubbleClass(m);
     b.innerHTML=bubbleHTML(m);
@@ -556,9 +554,10 @@
 
     var m=byId[mid];
     if(!m){
-      // any user message arriving over the wire is from another participant
+      // Link-as-identity: a user message from any device is "you", rendered the
+      // same everywhere (see makeRow). We keep cid only for echo suppression.
       m={mid:mid, role:role, type:type, text:"", ts:env.ts||Date.now(), done:false, _parts:{},
-         cid:env.cid, mine:(role==="user")?false:undefined};
+         cid:env.cid};
       byId[mid]=m; messages.push(m);
     }
     m._parts[seq]=env.text||"";
@@ -572,7 +571,7 @@
     var set=seenParts[mid] || (seenParts[mid]=new Set()); if(set.has(0)) return; set.add(0);
     var m={mid:mid, role:env.role, type:"attach", mime:env.mime||"", url:env.url, name:env.name,
            size:env.size, w:env.w, h:env.h, text:env.text||"", ts:env.ts||Date.now(), done:true,
-           cid:env.cid, mine:(env.role==="user")?false:undefined};
+           cid:env.cid};
     byId[mid]=m; messages.push(m); upsertRow(m); save(); pruneMemory();
   }
   var seenAct={};

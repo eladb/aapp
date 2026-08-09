@@ -100,8 +100,12 @@ messages in order — each envelope tagged **`replay:true`** and carrying its
 
 - A sender sets `cid` to its own instance id and **ignores envelopes with its
   own `cid`** (ntfy echoes published messages back to subscribers).
-- The agent only acts on `role:"user"` `msg` envelopes; the phone only renders
-  `role:"agent"` content (plus its own optimistic user echoes).
+- The agent only acts on `role:"user"` `msg` envelopes.
+- **Link-as-identity:** the app treats every `role:"user"` message as "you" and
+  renders it identically (right-aligned) on every device, and `role:"agent"` as
+  the other side (left). So a phone and a tablet opened on the same link show an
+  identical conversation — there is no per-device "mine" and no per-sender
+  labeling. `cid` is used only to suppress a device's own echoes.
 - Dedup on the ntfy line `id` and on `(mid, seq)` so reconnect replays are
   idempotent.
 - Unknown `type` or `v` values are ignored — forward-compatible.
