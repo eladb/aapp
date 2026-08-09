@@ -1079,13 +1079,21 @@ def cmd_wait(args):
     state = require_state(args)
     msg = wait_for_user_message(state, args)
     if msg is None:
-        # nothing arrived within the window
+        # Nothing arrived within the window. This is a normal idle timeout, not an
+        # error, so exit 0 with a {"type":"timeout"} marker rather than a non-zero
+        # code (a non-zero exit shows up as a scary "failed" background task). The
+        # caller distinguishes by the "type" field and just re-arms another wait.
+        line = json.dumps({"type": "timeout"})
         if args.out:
             try:
-                os.remove(args.out)
+                with open(args.out, "w") as f:
+                    f.write(line)
             except OSError:
                 pass
-        sys.exit(22)  # distinct code: timed out with no message
+        print(line)
+        if getattr(args, "timeout_exit", False):
+            sys.exit(22)  # opt-in legacy behavior for scripts that check the code
+        return
     # Acknowledge receipt immediately: publish a typing indicator the instant the
     # message lands, so the app shows a "thinking" affordance right away instead
     # of waiting for the agent's turn to start and call `typing on` itself. The
@@ -1213,6 +1221,9 @@ def build_parser():
                    help="also return user typing/status signals")
     w.add_argument("--no-ack", dest="ack", action="store_false", default=True,
                    help="don't auto-show a thinking indicator when a message arrives")
+    w.add_argument("--timeout-exit", action="store_true",
+                   help="exit 22 on idle timeout (legacy) instead of exit 0 with a "
+                        "{\"type\":\"timeout\"} marker")
     w.set_defaults(func=cmd_wait)
 
     h = sub.add_parser("history", help="dump cached messages as JSON lines")

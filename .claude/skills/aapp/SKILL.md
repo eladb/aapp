@@ -140,16 +140,19 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
    python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 1800
    ```
    Run this with your background-execution tool. It prints the message as JSON to
-   **stdout** (which your background tool captures) when one arrives, or exits 22
-   on timeout. Use a **long** timeout (default 1800s): messages wake it instantly
+   **stdout** (which your background tool captures) when one arrives. On an idle
+   timeout it exits **0** with `{"type":"timeout"}` (a normal, quiet re-arm — not
+   a failure); just start another `wait`. Use a **long** timeout (default 1800s):
+   messages wake it instantly
    via streaming, so a big value just avoids idle returns; the read cursor is
    persisted, so nothing is missed while re-arming (if the environment recycles
    the background process sooner, just start another `wait`). **Run it exactly as written — no `VAR=… ` env-var prefix.** The
    session-scoped state file is auto-detected, and a leading env assignment both
    breaks that and stops the pre-authorization rule (see *Permissions*) from
    matching, which is what makes the listener get blocked.
-2. **When it returns**, read the message JSON from the background task's output
-   and treat its `text` as a normal user request. `wait` already published a
+2. **When it returns**, read the message JSON from the background task's output.
+   If it's `{"type":"timeout"}`, just re-launch `wait`. Otherwise treat its
+   `text` as a normal user request. `wait` already published a
    **thinking indicator** the instant the message arrived (the app also shows one
    optimistically on send), so the user has immediate feedback — you don't need
    to send `typing on` yourself. Optionally add progress detail:
@@ -161,7 +164,7 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
    python3 .claude/skills/aapp/scripts/bridge.py send --text "Done — here's what I changed …" --typing-off
    # long text and code are auto-chunked to fit the relay; multi-part is fine
    ```
-4. **Re-launch the wait** and continue. On a timeout with no message (exit 22),
+4. **Re-launch the wait** and continue. On an idle timeout (`{"type":"timeout"}`),
    just start another wait. Keep going until the user says to stop, then send a
    final message and end the loop.
 
