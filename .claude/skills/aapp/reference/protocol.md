@@ -143,3 +143,6 @@ feed. Consequences:
 
 - Agent side: `scripts/bridge.py` (`send` chunks; `wait` reassembles).
 - Phone side: `app.html` (fetch-stream reader with cursor + poll fallback).
+- Reusable client: `aapp-client.js` — the phone-side protocol logic with no
+  DOM, for building your own client (browser or Node). See
+  [`client.md`](client.md).

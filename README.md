@@ -66,13 +66,36 @@ host the app, hand you the link, and then act as the other end of the chat.
   redeploy after a push. Or point your agent at
   [`aapp.run/install.md`](https://aapp.run/install.md) and it'll follow the steps.)
 
+## Build your own client
+
+The phone app's protocol logic — connect, de-dupe, reassemble streaming
+messages, track presence, send chunked messages/attachments — is extracted into
+a standalone, dependency-free library,
+[`aapp-client.js`](.claude/skills/aapp/aapp-client.js). It has no DOM
+dependencies and runs in modern browsers and Node 18+, so you can build a
+different UI (or a headless bot) on the same session:
+
+```js
+const c = AappClient.fromLink(location.href);
+c.on("msg", m => render(m));            // streaming messages
+c.on("presence", p => setOnline(p.state === "online"));
+c.start();
+await c.sendText("hello from my own client");
+```
+
+It speaks the exact same wire protocol as `app.html` and `bridge.py`, so every
+client on a topic interoperates. Full API in
+[`reference/client.md`](.claude/skills/aapp/reference/client.md).
+
 ## Layout
 
 | File | Role |
 |------|------|
 | `.claude/skills/aapp/SKILL.md` | Instructions Claude follows |
 | `.claude/skills/aapp/app.html` | The phone app (single self-contained file) |
+| `.claude/skills/aapp/aapp-client.js` | Reusable JS protocol client (browser + Node, no deps) |
 | `.claude/skills/aapp/scripts/bridge.py` | Agent-side relay client (stdlib only) |
 | `.claude/skills/aapp/scripts/serve.py` | Optional local server for tunnel hosting |
 | `.claude/skills/aapp/reference/protocol.md` | Wire protocol (v1) |
+| `.claude/skills/aapp/reference/client.md` | `aapp-client.js` API + examples |
 | `.claude/skills/aapp/reference/hosting.md` | Every hosting option |
