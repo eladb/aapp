@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-<meta name="theme-color" content="#09090b" media="(prefers-color-scheme: dark)">
-<meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#14110f" media="(prefers-color-scheme: dark)">
+<meta name="theme-color" content="#fffdfa" media="(prefers-color-scheme: light)">
 <meta name="color-scheme" content="light dark">
 <!-- iOS: installable, standalone home-screen app -->
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -15,27 +15,35 @@
 <link rel="apple-touch-icon" id="apple-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Crect width='180' height='180' rx='40' fill='%236d5efc'/%3E%3Ctext x='90' y='120' font-size='96' text-anchor='middle' fill='white' font-family='sans-serif'%3E%E2%97%88%3C/text%3E%3C/svg%3E">
 <title>Agent</title>
 <style>
+  /* Warm, coral-branded palette — ties the app to the octopus identity. The
+     neutrals carry a slight warm (coral-leaning) bias so they read as chosen,
+     not default zinc. --primary is the coral accent, so user bubbles, the send
+     button, primary actions and the focus ring all pick it up. */
   :root{
-    --background:0 0% 100%; --foreground:240 10% 3.9%;
-    --card:0 0% 100%; --card-foreground:240 10% 3.9%;
-    --muted:240 4.8% 95.9%; --muted-foreground:240 3.8% 46.1%;
-    --border:240 5.9% 90%; --input:240 5.9% 90%;
-    --primary:240 5.9% 10%; --primary-foreground:0 0% 98%;
-    --accent:240 4.8% 95.9%; --accent-foreground:240 5.9% 10%;
-    --destructive:0 72% 51%; --success:142 71% 45%; --warning:38 92% 50%;
-    --ring:240 5.9% 10%; --radius:0.7rem;
+    --background:30 33% 99%; --foreground:20 14% 11%;
+    --card:26 24% 93.5%; --card-foreground:20 14% 11%;
+    --muted:26 20% 90%; --muted-foreground:22 10% 43%;
+    --border:24 16% 88%; --input:24 16% 86%;
+    --primary:11 98% 61%; --primary-foreground:0 0% 100%;
+    --primary-strong:11 90% 52%;
+    --accent:24 20% 94%; --accent-foreground:20 14% 11%;
+    --destructive:2 80% 56%; --success:146 58% 40%; --warning:32 94% 48%;
+    --ring:11 98% 61%; --radius:0.85rem;
+    --code-bg:222 18% 13%; --code-fg:220 14% 90%;
     --safe-t:env(safe-area-inset-top); --safe-b:env(safe-area-inset-bottom);
   }
   @media (prefers-color-scheme:dark){
     :root{
-      --background:240 10% 3.9%; --foreground:0 0% 98%;
-      --card:240 10% 5.5%; --card-foreground:0 0% 98%;
-      --muted:240 3.7% 15.9%; --muted-foreground:240 5% 64.9%;
-      --border:240 3.7% 15.9%; --input:240 3.7% 17%;
-      --primary:0 0% 98%; --primary-foreground:240 5.9% 10%;
-      --accent:240 3.7% 15.9%; --accent-foreground:0 0% 98%;
-      --destructive:0 62% 52%; --success:142 65% 47%; --warning:38 92% 50%;
-      --ring:240 4.9% 83.9%;
+      --background:20 14% 7%; --foreground:30 14% 96%;
+      --card:22 9% 15%; --card-foreground:30 14% 96%;
+      --muted:22 9% 18%; --muted-foreground:24 8% 62%;
+      --border:22 9% 21%; --input:22 9% 24%;
+      --primary:11 100% 63%; --primary-foreground:0 0% 100%;
+      --primary-strong:11 96% 56%;
+      --accent:22 9% 18%; --accent-foreground:30 14% 96%;
+      --destructive:2 74% 60%; --success:146 52% 50%; --warning:32 94% 56%;
+      --ring:11 100% 63%;
+      --code-bg:20 14% 4%; --code-fg:220 12% 88%;
     }
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
@@ -74,66 +82,78 @@
   .iconbtn:hover{background:hsl(var(--accent)); color:hsl(var(--foreground))}
   .iconbtn:active{background:hsl(var(--muted))}
   /* ---- messages ---- */
-  #scroll{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:14px 12px 8px; scroll-behavior:smooth}
-  #list{display:flex; flex-direction:column; gap:8px; max-width:760px; margin:0 auto}
-  .row{display:flex; gap:8px; align-items:flex-end}
+  #scroll{flex:1 1 auto; min-height:0; overflow-y:auto; overflow-x:hidden; -webkit-overflow-scrolling:touch; padding:12px 12px 10px; scroll-behavior:smooth}
+  #list{display:flex; flex-direction:column; gap:4px; max-width:760px; margin:0 auto}
+  .row{display:flex; align-items:flex-end}
   .row.me{flex-direction:row-reverse}
+  /* message grouping: consecutive bubbles from the same side hug together;
+     a change of speaker (or a system/day line) opens up the spacing */
+  .row.them + .row.me, .row.me + .row.them{margin-top:9px}
   .bubble{
-    max-width:84%; padding:8px 12px; border-radius:calc(var(--radius) + 6px); position:relative;
-    background:hsl(var(--card)); color:hsl(var(--card-foreground)); border:1px solid hsl(var(--border));
-    border-bottom-left-radius:6px; word-wrap:break-word; overflow-wrap:anywhere; line-height:1.5;
-    animation:pop .16s ease-out;
+    max-width:84%; min-width:0; padding:9px 13px; border-radius:20px; position:relative;
+    background:hsl(var(--card)); color:hsl(var(--card-foreground));
+    border-bottom-left-radius:7px; overflow-wrap:anywhere; line-height:1.45;
+    box-shadow:0 1px 1px hsl(20 14% 8%/0.05); animation:pop .18s cubic-bezier(.2,.85,.3,1);
   }
   .row.me .bubble{
-    background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); border-color:transparent;
-    border-bottom-left-radius:calc(var(--radius) + 6px); border-bottom-right-radius:6px;
+    background:hsl(var(--primary)); color:hsl(var(--primary-foreground));
+    border-bottom-left-radius:20px; border-bottom-right-radius:7px;
+    box-shadow:0 1px 3px hsl(var(--primary-strong)/0.3);
   }
-  @keyframes pop{from{transform:translateY(4px); opacity:0} to{transform:none; opacity:1}}
-  .bubble .meta{font-size:10.5px; color:hsl(var(--muted-foreground)); margin-top:4px; text-align:right}
-  .row.me .bubble .meta{color:hsl(var(--primary-foreground)/0.7)}
+  @keyframes pop{from{transform:translateY(5px) scale(.99); opacity:0} to{transform:none; opacity:1}}
+  .bubble .meta{font-size:10.5px; color:hsl(var(--muted-foreground)); margin-top:3px; text-align:right; opacity:.85}
+  .row.me .bubble .meta{color:hsl(var(--primary-foreground)/0.72)}
   .bubble p{margin:0 0 6px} .bubble p:last-child{margin-bottom:0}
-  .bubble a{color:inherit; text-decoration:underline; text-underline-offset:2px}
-  .bubble ul,.bubble ol{margin:4px 0; padding-left:20px}
-  .bubble h1,.bubble h2,.bubble h3{margin:6px 0 4px; font-size:1.02em; font-weight:600; line-height:1.25}
-  .bubble code.inline{background:hsl(var(--muted)); padding:1px 5px; border-radius:5px; font-size:.85em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .row.me .bubble code.inline{background:hsl(var(--primary-foreground)/0.18)}
-  .codewrap{position:relative; margin:6px 0}
-  .bubble pre{background:hsl(240 10% 6%); color:hsl(0 0% 92%); padding:11px 12px; border-radius:calc(var(--radius) - 1px); overflow-x:auto; margin:0; font-size:12.5px; line-height:1.5; border:1px solid hsl(0 0% 100%/0.06)}
+  .bubble a{color:inherit; text-decoration:underline; text-underline-offset:2px; text-decoration-color:currentColor; text-decoration-thickness:.06em}
+  .bubble a.filechip,.bubble a.attlink{text-decoration:none}
+  .bubble ul,.bubble ol{margin:5px 0; padding-left:20px}
+  .bubble li{margin:2px 0}
+  .bubble h1,.bubble h2,.bubble h3{margin:8px 0 4px; font-size:1.03em; font-weight:700; line-height:1.25; letter-spacing:-.01em}
+  .bubble h1:first-child,.bubble h2:first-child,.bubble h3:first-child{margin-top:0}
+  .bubble code.inline{background:hsl(var(--muted)); padding:1.5px 5px; border-radius:6px; font-size:.84em; font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  .row.me .bubble code.inline{background:hsl(var(--primary-foreground)/0.2)}
+  .codewrap{position:relative; margin:7px 0}
+  .bubble pre{background:hsl(var(--code-bg)); color:hsl(var(--code-fg)); padding:28px 13px 12px; border-radius:13px; overflow-x:auto; margin:0; font-size:12.5px; line-height:1.55}
   .bubble pre code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  .copy{position:absolute; top:6px; right:6px; font-size:11px; padding:3px 8px; border-radius:6px; border:1px solid hsl(0 0% 100%/0.15); background:hsl(0 0% 100%/0.06); color:hsl(0 0% 90%); cursor:pointer}
-  .copy:active{background:hsl(0 0% 100%/0.16)}
-  /* markdown tables */
-  .tablewrap{overflow-x:auto; margin:6px 0; border:1px solid hsl(var(--border)); border-radius:calc(var(--radius) - 2px); -webkit-overflow-scrolling:touch}
-  .bubble table,.act .ax table{border-collapse:collapse; width:100%; font-size:13px}
-  .bubble th,.bubble td,.act .ax th,.act .ax td{border-bottom:1px solid hsl(var(--border)); padding:6px 10px; text-align:left; white-space:nowrap}
-  .bubble th:not(:last-child),.bubble td:not(:last-child),.act .ax th:not(:last-child),.act .ax td:not(:last-child){border-right:1px solid hsl(var(--border))}
-  .bubble thead th,.act .ax thead th{background:hsl(var(--muted)); font-weight:600}
+  .copy{position:absolute; top:6px; right:6px; font-size:10.5px; font-weight:500; padding:4px 10px; border-radius:8px; border:none; background:hsl(0 0% 100%/0.1); color:hsl(0 0% 90%); cursor:pointer; -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px)}
+  .copy:active{background:hsl(0 0% 100%/0.2)}
+  /* markdown tables — hairline rows, no heavy grid box */
+  .tablewrap{overflow-x:auto; margin:7px 0; border:1px solid hsl(var(--border)); border-radius:12px; -webkit-overflow-scrolling:touch}
+  .bubble table,.act .ax table{border-collapse:collapse; width:100%; font-size:12.5px}
+  .bubble th,.bubble td,.act .ax th,.act .ax td{border-bottom:1px solid hsl(var(--border)); padding:7px 12px; text-align:left; white-space:nowrap}
+  .bubble thead th,.act .ax thead th{background:hsl(var(--muted)); font-weight:600; font-size:11px; letter-spacing:.04em; text-transform:uppercase; color:hsl(var(--muted-foreground))}
   .bubble tbody tr:last-child td,.act .ax tbody tr:last-child td{border-bottom:none}
-  /* system / status lines */
-  .sys{align-self:center; font-size:12px; color:hsl(var(--muted-foreground)); background:hsl(var(--muted)); padding:4px 12px; border-radius:999px; border:1px solid hsl(var(--border)); max-width:90%; text-align:center}
-  .daysep{align-self:center; font-size:10.5px; color:hsl(var(--muted-foreground)); letter-spacing:.04em; text-transform:uppercase; margin:10px 0 2px}
-  .bubble.failed{border-color:hsl(var(--destructive)); box-shadow:0 0 0 1px hsl(var(--destructive))}
+  .row.me .bubble .tablewrap{border-color:hsl(var(--primary-foreground)/0.25)}
+  .row.me .bubble th,.row.me .bubble td{border-bottom-color:hsl(var(--primary-foreground)/0.22)}
+  .row.me .bubble thead th{background:hsl(var(--primary-foreground)/0.12); color:hsl(var(--primary-foreground)/0.85)}
+  /* system / status lines — quiet centered notes, not bordered blobs */
+  .sys{align-self:center; max-width:86%; text-align:center; font-size:12px; line-height:1.5;
+    color:hsl(var(--muted-foreground)); padding:2px 8px; margin:8px 0 4px}
+  .daysep{align-self:center; font-size:10.5px; font-weight:600; color:hsl(var(--muted-foreground)); letter-spacing:.06em; text-transform:uppercase; margin:12px 0 4px}
+  .bubble.failed{box-shadow:0 0 0 1.5px hsl(var(--destructive))}
   /* attachments */
-  .attbtn{width:42px; height:42px; flex:0 0 auto; border:1px solid hsl(var(--input)); border-radius:var(--radius); background:hsl(var(--background)); color:hsl(var(--muted-foreground)); font-size:22px; line-height:1; display:grid; place-items:center; cursor:pointer; transition:.15s}
-  .attbtn:hover{color:hsl(var(--foreground))} .attbtn:active{background:hsl(var(--muted))}
+  .attbtn{width:44px; height:44px; flex:0 0 auto; border:none; border-radius:50%; background:hsl(var(--muted)/0.7); color:hsl(var(--muted-foreground)); font-size:25px; font-weight:300; line-height:1; display:grid; place-items:center; cursor:pointer; transition:.15s}
+  .attbtn:active{background:hsl(var(--muted)); color:hsl(var(--foreground)); transform:scale(.92)}
   /* visually hidden but present & activatable (iOS won't open a display:none input) */
   .filein{position:absolute; width:1px; height:1px; opacity:0; overflow:hidden; clip:rect(0,0,0,0); border:0; padding:0; margin:-1px}
   .bubble.media{padding:4px} .bubble.media .meta{padding:1px 6px 3px}
   .attlink{display:block; line-height:0}
-  .att{display:block; max-width:min(240px,72vw); max-height:340px; width:auto; height:auto; border-radius:10px; object-fit:cover; background:hsl(var(--muted))}
+  .att{display:block; max-width:min(240px,72vw); max-height:340px; width:auto; height:auto; border-radius:14px; object-fit:cover; background:hsl(var(--muted))}
   .att.up{opacity:.5}
-  .filechip{display:flex; align-items:center; gap:10px; text-decoration:none; color:inherit; padding:3px 2px}
-  .filechip .fi{font-size:22px; flex:0 0 auto}
+  .filechip{display:flex; align-items:center; gap:11px; text-decoration:none; color:inherit; padding:5px 6px}
+  .filechip .fi{font-size:20px; flex:0 0 auto; width:38px; height:38px; display:grid; place-items:center; background:hsl(var(--muted)); border-radius:11px}
+  .row.me .filechip .fi{background:hsl(var(--primary-foreground)/0.16)}
   .filechip .fn{font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px}
-  .filechip .fs{color:hsl(var(--muted-foreground)); font-size:12px; flex:0 0 auto}
-  .row.me .filechip .fs{color:hsl(var(--primary-foreground)/0.7)}
-  /* activity feed (session transcript, summaries only) */
-  .act{align-self:stretch; display:flex; gap:8px; align-items:flex-start; font-size:12.5px; color:hsl(var(--muted-foreground)); padding:1px 4px; margin:0 auto; max-width:760px; width:100%}
-  .act .ai{flex:0 0 auto; width:16px; text-align:center; color:hsl(var(--muted-foreground))}
-  .act .ax{flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid hsl(var(--border)); padding-left:10px}
-  .act.assistant .ax{color:hsl(var(--foreground)/0.75); white-space:normal}
+  .filechip .fs{color:hsl(var(--muted-foreground)); font-size:12px; flex:0 0 auto; font-variant-numeric:tabular-nums}
+  .row.me .filechip .fs{color:hsl(var(--primary-foreground)/0.72)}
+  /* activity feed (session transcript, summaries only) — a quiet coral-ticked trail */
+  .act{align-self:stretch; display:flex; gap:9px; align-items:flex-start; font-size:12.5px; color:hsl(var(--muted-foreground)); padding:2px 6px; margin:2px auto; max-width:760px; width:100%}
+  .act .ai{flex:0 0 auto; width:13px; display:flex; justify-content:center; padding-top:2px; font-size:10px; color:hsl(var(--muted-foreground))}
+  .act.assistant .ai{color:hsl(var(--primary))}
+  .act .ax{flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere; border-left:2px solid hsl(var(--border)); padding-left:11px}
+  .act.assistant .ax{color:hsl(var(--foreground)/0.74); white-space:normal; border-left-color:hsl(var(--primary)/0.45)}
   .act.tool .ax{font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:11.5px}
-  .act.user .ax{color:hsl(var(--foreground)/0.8)}
+  .act.user .ax{color:hsl(var(--foreground)/0.82)}
   .act .ax p{margin:0 0 4px} .act .ax p:last-child{margin:0}
   .act .ax ul,.act .ax ol{margin:2px 0; padding-left:18px}
   .act .ax pre{background:hsl(240 10% 6%); color:hsl(0 0% 90%); padding:8px 10px; border-radius:calc(var(--radius) - 2px); overflow-x:auto; margin:4px 0; font-size:11.5px}
@@ -160,22 +180,24 @@
   #tobottom .badge{position:absolute; top:-4px; right:-4px; min-width:18px; height:18px; padding:0 4px; border-radius:9px; background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); font-size:10.5px; font-weight:600; display:grid; place-items:center}
   /* composer */
   .composer{
-    border-top:1px solid hsl(var(--border)); background:hsl(var(--background));
-    padding:10px 12px calc(10px + var(--safe-b)); display:flex; gap:8px; align-items:flex-end; position:relative; z-index:5;
+    border-top:1px solid hsl(var(--border)); background:hsl(var(--background)/0.9);
+    -webkit-backdrop-filter:saturate(1.4) blur(12px); backdrop-filter:saturate(1.4) blur(12px);
+    padding:9px 12px calc(9px + var(--safe-b)); display:flex; gap:9px; align-items:flex-end; position:relative; z-index:5;
   }
   .composer textarea{
-    flex:1; resize:none; border:1px solid hsl(var(--input)); background:hsl(var(--background)); color:hsl(var(--foreground));
-    border-radius:var(--radius); padding:10px 14px; font:inherit; max-height:38vh; min-height:42px; line-height:1.4; outline:none;
-    transition:border-color .15s, box-shadow .15s;
+    flex:1; resize:none; border:1px solid hsl(var(--input)); background:hsl(var(--muted)/0.55); color:hsl(var(--foreground));
+    border-radius:23px; padding:11px 16px; font:inherit; font-size:16px; max-height:38vh; min-height:44px; line-height:1.35; outline:none;
+    transition:border-color .15s, box-shadow .15s, background .15s;
   }
   .composer textarea::placeholder{color:hsl(var(--muted-foreground))}
-  .composer textarea:focus{border-color:hsl(var(--ring)); box-shadow:0 0 0 2px hsl(var(--ring)/0.25)}
+  .composer textarea:focus{border-color:hsl(var(--primary)/0.6); background:hsl(var(--background)); box-shadow:0 0 0 3px hsl(var(--primary)/0.15)}
   .send{
-    width:42px; height:42px; flex:0 0 auto; border:1px solid transparent; border-radius:var(--radius); cursor:pointer;
-    background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); font-size:18px; display:grid; place-items:center; transition:.15s;
+    width:44px; height:44px; flex:0 0 auto; border:none; border-radius:50%; cursor:pointer;
+    background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); font-size:19px; display:grid; place-items:center; transition:.15s;
+    box-shadow:0 2px 9px hsl(var(--primary-strong)/0.32);
   }
-  .send:disabled{opacity:.4}
-  .send:active:not(:disabled){transform:scale(.94)}
+  .send:disabled{background:hsl(var(--muted)); color:hsl(var(--muted-foreground)); box-shadow:none}
+  .send:active:not(:disabled){transform:scale(.9)}
   /* sheet */
   .scrim{position:fixed; inset:0; background:hsl(240 10% 3.9%/0.5); z-index:20; opacity:0; pointer-events:none; transition:.2s}
   .scrim.show{opacity:1; pointer-events:auto}
@@ -200,6 +222,9 @@
   .hint{font-size:12.5px; color:hsl(var(--muted-foreground)); margin:2px 0 14px; line-height:1.55}
   .toast{position:fixed; left:50%; bottom:calc(90px + var(--safe-b)); transform:translateX(-50%) translateY(20px); background:hsl(var(--foreground)); color:hsl(var(--background)); padding:9px 16px; border-radius:999px; font-size:13px; font-weight:500; opacity:0; pointer-events:none; transition:.25s; z-index:30}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  @media (prefers-reduced-motion: reduce){
+    *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important}
+  }
 </style>
 </head>
 <body>
@@ -758,7 +783,7 @@
     // instant thinking affordance (the agent's ack/reply take over from here).
     if(agentState()==="offline"){
       if(!warnedOffline){ warnedOffline=true;
-        addSystem("⚠︎ The agent isn't listening right now — your message is saved and will arrive once the listener runs. In your Claude Code session start it: python3 .claude/skills/aapp/scripts/bridge.py wait — or ask the agent to resume.");
+        addSystem("⚠︎ No agent is listening right now — your message is queued and will arrive once the listener runs. Start it in your Claude Code session (run bridge.py wait), or ask the agent to resume.");
       }
     } else {
       setTyping(true);
