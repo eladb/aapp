@@ -171,6 +171,8 @@
     border:1px solid var(--line); border-radius:8px; padding:8px 12px; min-height:36px; cursor:pointer; transition:.15s}
   .copy:hover{color:var(--acc-bright); border-color:var(--acc-line)}
   .install-note{margin-top:16px; font-size:13px; color:var(--dim)}
+  .install-note a{color:var(--acc-bright); text-decoration:underline; text-underline-offset:2px}
+  .install-note code{font-family:var(--mono); font-size:12px; color:var(--muted); background:var(--card); border:1px solid var(--line); border-radius:6px; padding:1px 6px}
 
   /* features bento — hierarchy: heavy marquee > wide > regular */
   .bento{display:grid; grid-template-columns:1fr; gap:14px}
@@ -333,11 +335,9 @@
   <p class="sub">Drop this into any Claude Code session. It installs the skill, names the app after your session, picks an icon, starts the activity feed, and hands you a shareable link — no questions, nothing to deploy.</p>
   <div class="term prompt">
     <div class="bar"><span class="mk" aria-hidden="true"><svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M12 3c3.3 0 6 2.5 6 5.8 0 1.7-.7 3-1.6 4 .5.3 1 .9 1 1.7 0 1-.8 1.6-1.7 1.4.2.9-.3 1.8-1.2 1.9-.7.1-1.3-.3-1.6-.9-.3.7-1 .9-1.6.7-.6.2-1.3 0-1.6-.7-.3.6-.9 1-1.6.9-.9-.1-1.4-1-1.2-1.9-.9.2-1.7-.4-1.7-1.4 0-.8.5-1.4 1-1.7C6.7 11.8 6 10.5 6 8.8 6 5.5 8.7 3 12 3Zm-1.7 5.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2Zm3.4 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2Z"/></svg></span><span class="t">paste into Claude&nbsp;Code</span><button class="copy" id="cp">Copy prompt</button></div>
-    <pre id="cmd">Install aapp from https://github.com/eladb/aapp and give me a link to chat with this Claude Code session from my phone.
-
-Run the installer — curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash — then name the app after this session, pick an emoji icon that fits what we're working on, start the activity feed, and post the shareable link. No questions.</pre>
+    <pre id="cmd">Set up aapp so I can chat with this Claude Code session from my phone — follow the instructions at https://aapp.run/install.md</pre>
   </div>
-  <p class="install-note">The prompt runs a one-line installer under the hood — nothing else to set up.</p>
+  <p class="install-note">The agent fetches <a href="https://aapp.run/install.md">aapp.run/install.md</a> and follows it. Prefer the shell? Run <code>curl -fsSL https://aapp.run/install.sh | bash</code> yourself.</p>
 </div></section>
 
 <section id="features">

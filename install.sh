@@ -5,7 +5,7 @@
 # Drops the aapp skill into the current project (.claude/skills/aapp) and mints a
 # public, phone-ready chat link for THIS Claude Code session. No questions.
 #
-#   curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+#   curl -fsSL https://aapp.run/install.sh | bash
 #
 # The app shell itself is already hosted publicly (GitHub Pages), and the session
 # lives entirely in the link's URL fragment, so there is nothing to deploy — this

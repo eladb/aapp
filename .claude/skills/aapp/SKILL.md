@@ -23,7 +23,7 @@ If a user drops this repo's link (or says "install and give me a link"), do all
 of this **yourself, with no questions** — pick sensible defaults and go:
 
 1. **Install** (skip if already under `.claude/skills/aapp`):
-   `curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash`
+   `curl -fsSL https://aapp.run/install.sh | bash`
    (or clone the repo and copy `.claude/skills/aapp`). It already prints a link.
 2. **Name it after the session.** `bridge.py link --name-from-session`
    auto-detects the session title; if you know the exact UI name, pass `--name`.

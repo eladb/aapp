@@ -16,6 +16,7 @@ on:
     paths:
       - .claude/skills/aapp/app.html
       - site/**
+      - install.sh
       - .github/workflows/pages.yml
   workflow_dispatch:
 
@@ -39,8 +40,9 @@ jobs:
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp -r site/. _site/                            # landing page + assets (screenshot)
+          cp -r site/. _site/                            # landing page + assets (screenshot) + install.md
           cp .claude/skills/aapp/app.html _site/app.html # the chat app
+          cp install.sh _site/install.sh                 # publish the installer at aapp.run/install.sh
           # Stamp the build id (commit sha) into the app and a sibling
           # version.json so the client can detect a newer deploy and auto-update.
           BUILD="${GITHUB_SHA}"

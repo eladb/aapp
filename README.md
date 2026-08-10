@@ -25,7 +25,7 @@ runs the one-shot installer, names the app after your session, picks a fitting
 icon, and hands you a shareable URL. No hosting, no config, no questions:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+curl -fsSL https://aapp.run/install.sh | bash
 ```
 
 That installs the skill into `.claude/skills/aapp` and prints a phone-ready link
@@ -60,9 +60,11 @@ host the app, hand you the link, and then act as the other end of the chat.
   `.claude/skills/aapp`, then restart any running tailer/listener so agent-side
   changes take effect:
   ```bash
-  curl -fsSL https://raw.githubusercontent.com/eladb/aapp/main/install.sh | bash
+  curl -fsSL https://aapp.run/install.sh | bash
   ```
-  (`raw.githubusercontent` caches for ~5 min after a push.)
+  (`aapp.run/install.sh` is served from GitHub Pages; give it a minute to
+  redeploy after a push. Or point your agent at
+  [`aapp.run/install.md`](https://aapp.run/install.md) and it'll follow the steps.)
 
 ## Layout
 
