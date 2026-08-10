@@ -1,0 +1,19 @@
+# aapp-relay — Cloudflare module Worker + SQLite-backed Durable Object.
+# Deploy: `npx wrangler deploy`  (runs on the Workers Free plan thanks to new_sqlite_classes).
+
+name = "aapp-relay"
+main = "worker.js"
+compatibility_date = "2024-09-23"
+
+# Durable Object binding. env.TOPIC -> the Topic class. One instance per topic
+# (idFromName(topic)); one extra instance idFromName("$files") holds attachments.
+[[durable_objects.bindings]]
+name = "TOPIC"
+class_name = "Topic"
+
+# SQLite-backed DO migration. new_sqlite_classes is REQUIRED for the Free plan
+# (KV-backed DOs are paid-only). The KV-style storage API (get/put/list/delete,
+# getAlarm/setAlarm) used in worker.js works unchanged on a SQLite-backed DO.
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Topic"]

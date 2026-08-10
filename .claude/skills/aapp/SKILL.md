@@ -7,7 +7,7 @@ description: >-
   this session from my phone", get a "shareable link to this agent", a
   "mobile app / PWA for this session", control the agent remotely, or hand
   someone a URL to message the running agent. Works in locked-down sandboxes
-  (HTTPS-only egress) via the ntfy.sh relay; no server or account required.
+  (HTTPS-only egress) via the aapp relay; no server or account required.
 ---
 
 # aapp — a phone-ready chat app for this session
@@ -36,7 +36,7 @@ of this **yourself, with no questions** — pick sensible defaults and go:
 
 > **Always share an aapp link as a Markdown link**, never a bare URL — label it
 > with the app/session name so it's tappable and readable:
-> `[Nir Medical](https://…/app.html#s=https://ntfy.sh&t=aapp-…&n=Nir%20Medical)`.
+> `[Nir Medical](https://…/app.html#s=https://relay.aapp.run&t=aapp-…&n=Nir%20Medical)`.
 > A raw link full of `#`/`&`/`%20` is easy to mis-copy or truncate; the labeled
 > Markdown form isn't. This applies every time you surface the link.
 
@@ -53,18 +53,21 @@ name, or icon — decide and go. (The detailed steps below are for custom setups
 ## How it works (30-second model)
 
 ```
-  phone (app.html)  ──POST envelope──▶   ntfy.sh/<topic>   ◀──stream──  agent (bridge.py)
-        ▲                                (public relay)                      │
+  phone (app.html)  ──POST envelope──▶  relay.aapp.run/<topic> ◀─stream─  agent (bridge.py)
+        ▲                                (Cloudflare relay)                    │
         └──────────────── stream replies ◀───────────────── POST replies ───┘
 ```
 
-- **Transport:** a per-session random **topic** on `ntfy.sh` (a free public
-  pub/sub relay). Both sides only need outbound **HTTPS**, so this works even
-  in sandboxes where tunnels / raw TCP are blocked.
+- **Transport:** a per-session random **topic** on the **aapp relay**
+  (`relay.aapp.run`, a Cloudflare Worker + Durable Object; ntfy-API-compatible,
+  so any ntfy server also works via `--server`). Both sides only need outbound
+  **HTTPS**, so this works even in sandboxes where tunnels / raw TCP are blocked.
+  Unlike the public ntfy.sh tier there is no anonymous publish rate limit, and
+  history is durable (a per-topic ring buffer) rather than a ~12h cache.
 - **The topic is the secret.** It lives in the link's URL **fragment**
   (`#t=…`), which browsers never send to the page's host or CDN — only to
-  ntfy. Anyone with the full link can chat with the session, so treat it like
-  a password and don't paste secrets into the conversation.
+  the relay. Anyone with the full link can chat with the session, so treat it
+  like a password and don't paste secrets into the conversation.
 - **Two files do the work:** `scripts/bridge.py` (agent side, stdlib only) and
   `app.html` (the phone app, one self-contained file).
 
@@ -81,8 +84,9 @@ python3 .claude/skills/aapp/scripts/bridge.py new
 on its own — just keep the same `AAPP_STATE` for every command in the session.)
 
 This mints a random topic and stores it. (Re-running reuses the same session;
-pass `--force` to rotate.) Default relay is `https://ntfy.sh`; override with
-`--server https://your-ntfy` if you self-host ntfy.
+pass `--force` to rotate.) Default relay is `https://relay.aapp.run` (the aapp
+Cloudflare relay); override with `--server https://ntfy.sh` (or any ntfy server)
+since the wire protocol is ntfy-compatible.
 
 ### 2. Publish `app.html` at a public HTTPS URL
 
@@ -113,14 +117,14 @@ name the app after the **session** automatically, pass the transcript instead:
 `--name-from-transcript "<session .jsonl>"` uses the session's current title.
 
 That prints the full shareable link, e.g.
-`https://…/app.html#s=https://ntfy.sh&t=aapp-<random>&n=My%20Session`.
+`https://…/app.html#s=https://relay.aapp.run&t=aapp-<random>&n=My%20Session`.
 
 ### 3. Hand the link to the user
 
 Give them the link **as a Markdown link labeled with the app/session name**
 (never a bare URL — see the directive above), plus this one-liner:
 
-> Here's your app: [My Session](https://…/app.html#s=https://ntfy.sh&t=aapp-…&n=My%20Session)
+> Here's your app: [My Session](https://…/app.html#s=https://relay.aapp.run&t=aapp-…&n=My%20Session)
 > Open on your iPhone in Safari → **Share** → **Add to Home Screen** to install
 > it as an app. Messages you send go straight to this session.
 

@@ -17,7 +17,7 @@ ok("server parsed", p.server === "https://ntfy.sh");
 ok("topic parsed", p.topic === "aapp-abc123");
 ok("name url-decoded", p.name === "Nir Medical");
 ok("bare fragment works", AappClient.parseLink("#t=aapp-xyz").topic === "aapp-xyz");
-ok("default server", AappClient.parseLink("#t=x").server === "https://ntfy.sh");
+ok("default server", AappClient.parseLink("#t=x").server === "https://relay.aapp.run");
 ok("trailing slash stripped", AappClient.parseLink("#s=https://n.sh/&t=x").server === "https://n.sh");
 
 // ---- buildLink round-trips ----
@@ -111,7 +111,7 @@ console.log("sendText / publish");
   let res = await cli3.sendText("hi there");
   ok("sendText resolves with mid", !!res.mid);
   ok("posted one envelope", posted.length === 1);
-  ok("POST to topic url", posted[0].url === "https://ntfy.sh/mytopic");
+  ok("POST to topic url", posted[0].url === "https://relay.aapp.run/mytopic");
   ok("envelope role user + text", posted[0].body.role === "user" && posted[0].body.text === "hi there");
   ok("envelope cid set", posted[0].body.cid === "js-send");
   ok("content-type json", posted[0].init.headers["Content-Type"] === "application/json");

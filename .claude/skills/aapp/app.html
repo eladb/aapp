@@ -318,7 +318,7 @@
 
   // ---- protocol constants (keep in sync with app.html / bridge.py) ----
   var PROTOCOL_VERSION = 1;
-  var DEFAULT_SERVER = "https://ntfy.sh";
+  var DEFAULT_SERVER = "https://relay.aapp.run";
   var MAX_ENVELOPE_BYTES = 3000; // keep each JSON body < ~3 KB so ntfy never
   //                                rejects or attaches an oversized message
   var AGENT_TTL = 90000; // agent considered offline after this much silence
@@ -495,7 +495,7 @@
   // =======================================================================
   //
   // options:
-  //   server   relay base URL (default https://ntfy.sh)
+  //   server   relay base URL (default https://relay.aapp.run)
   //   topic    ntfy topic (the shared secret) — required to start
   //   cid      this instance's id (default random "js-…"); receivers ignore
   //            envelopes carrying their own cid, so this suppresses echoes
@@ -665,8 +665,10 @@
         return resp.json();
       })
       .then(function (j) {
-        if (!j.attachment || !j.attachment.url) throw new Error("aapp: no attachment url");
-        var att = j.attachment;
+        // ntfy returns {attachment:{url,name,type,size}}; the aapp relay returns
+        // the fields at the TOP LEVEL ({url,id}). Accept either shape.
+        var att = (j && j.attachment) ? j.attachment : j;
+        if (!att || !att.url) throw new Error("aapp: no attachment url");
         var env = {
           v: PROTOCOL_VERSION,
           cid: self.cid,

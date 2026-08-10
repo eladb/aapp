@@ -1,22 +1,29 @@
 # aapp wire protocol (v1)
 
-The phone app and the agent bridge talk over a single **ntfy topic** that acts
+The phone app and the agent bridge talk over a single **topic** that acts
 as a shared realtime channel. Every message is a JSON **envelope** carried as
-the ntfy message body. Both sides publish and subscribe to the same topic.
+the relay message body. Both sides publish and subscribe to the same topic.
 
 ## Transport
 
-- **Relay:** any [ntfy](https://ntfy.sh) server. Default `https://ntfy.sh`.
+- **Relay:** the **aapp relay** at `https://relay.aapp.run` (a Cloudflare
+  Worker + Durable Object) by default. Its HTTP API is a compatible subset of
+  [ntfy](https://ntfy.sh), so any ntfy server also works via `--server` / the
+  link's `s=` fragment. Versus the public ntfy.sh tier the relay adds: no
+  anonymous publish rate limit, durable per-topic history (a 500-message ring
+  buffer, not a ~12h cache), and attachments stored on the relay itself.
 - **Topic:** `aapp-<~40 hex chars>`, random per session. It is the shared
   secret; keep it only in the URL fragment.
 - **Publish:** `POST {server}/{topic}` with the JSON envelope as the raw body
   and header `Content-Type: application/json`.
-- **Subscribe (stream):** `GET {server}/{topic}/json?since={cursor}` — ntfy
+- **Subscribe (stream):** `GET {server}/{topic}/json?since={cursor}` — the relay
   streams newline-delimited JSON (`{"id","event","message",…}`). Track the
-  `id` of the last line as the next `cursor` for resumable reconnects.
+  `id` of the last line as the next `cursor` for resumable reconnects. An absent
+  `since` streams only new messages (live-only); `since=all` replays the buffer.
 - **Subscribe (history / fallback):** `GET {server}/{topic}/json?poll=1&since=all`
-  returns cached messages (ntfy caches ~12h) and closes.
-- **CORS:** ntfy.sh sends `Access-Control-Allow-Origin: *`, so the browser app
+  returns buffered messages (the aapp relay retains the last 500 per topic) and
+  closes.
+- **CORS:** the relay sends `Access-Control-Allow-Origin: *`, so the browser app
   can read and post cross-origin from any static host.
 
 ## Envelope
@@ -73,8 +80,9 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   `url`); the envelope carries `url`/`name`/`mime`/`size` (+ optional `text`
   caption). The app renders `image/*` inline and other types as a downloadable
   file chip. Send from the agent with `bridge.py attach --file <path>`; the phone
-  sends photos (camera/library) and files from the composer. Note: ntfy.sh hosts
-  attachments for a few hours only.
+  sends photos (camera/library) and files from the composer. The aapp relay
+  stores attachments durably in Durable Object storage (served from
+  `relay.aapp.run/file/<id>`); on an ntfy server they are hosted for a few hours.
 - **`icon`** — sets the app icon live (`bridge.py icon --emoji 🚀` or
   `--url <img>`). The app renders an emoji onto a rounded gradient tile (or uses
   the image) and updates the favicon, apple-touch-icon, manifest icon, and

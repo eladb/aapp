@@ -71,7 +71,8 @@ import urllib.request
 import urllib.error
 import uuid
 
-DEFAULT_SERVER = "https://ntfy.sh"
+DEFAULT_SERVER = "https://relay.aapp.run"
+USER_AGENT = "aapp-bridge/1 (+https://aapp.run)"
 # The app shell is a generic static file; the session lives in the URL fragment,
 # so every session can reuse one public copy. This is the canonical hosted build
 # (GitHub Pages) — used as the default so publishing needs no per-user hosting.
@@ -227,18 +228,27 @@ def _opener():
     )
 
 
+def _with_ua(headers):
+    # Always send an explicit User-Agent. Some proxies/CDNs (including this
+    # environment's agent proxy) reject the default "Python-urllib/x.y" UA with
+    # a 403, so a real UA is required for the relay to be reachable.
+    h = dict(headers or {})
+    h.setdefault("User-Agent", USER_AGENT)
+    return h
+
+
 def http_post(url, data, headers=None, timeout=30):
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method="POST")
+    req = urllib.request.Request(url, data=data, headers=_with_ua(headers), method="POST")
     return _opener().open(req, timeout=timeout)
 
 
 def http_open(url, timeout=None):
-    req = urllib.request.Request(url, method="GET")
+    req = urllib.request.Request(url, headers=_with_ua(None), method="GET")
     return _opener().open(req, timeout=timeout)
 
 
 def http_put(url, data, headers=None, timeout=120):
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method="PUT")
+    req = urllib.request.Request(url, data=data, headers=_with_ua(headers), method="PUT")
     return _opener().open(req, timeout=timeout)
 
 
@@ -255,7 +265,9 @@ def ntfy_upload(sess, filepath):
         headers={"Filename": name, "Content-Type": mime},
     )
     outer = json.loads(resp.read().decode("utf-8"))
-    att = outer.get("attachment") or {}
+    # ntfy wraps the upload result under an "attachment" object; the aapp relay
+    # returns the {url,id} fields at the top level. Accept either shape.
+    att = outer.get("attachment") or outer
     if not att.get("url"):
         raise ValueError("upload did not return an attachment url")
     return att
