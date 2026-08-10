@@ -50,11 +50,13 @@ the ntfy message body. Both sides publish and subscribe to the same topic.
   text would exceed the relay's ~4 KB body limit. Receivers buffer by `mid`
   and concatenate parts in `seq` order until `last` is seen. Appending parts as
   they arrive yields a streaming effect.
-- **`presence`** — a tiny liveness beat the agent publishes every ~25s while a
-  `bridge.py wait` is actively listening. The app tracks the last time it heard
-  *any* agent signal (presence, msg, typing, status, activity…) and shows
-  **online** when fresh, **not listening** when stale (relay up but no listener),
-  clearing a stuck typing indicator and warning the user on send. Not rendered.
+- **`presence`** — a tiny liveness beat published every ~25s by the always-on
+  `bridge.py tail` daemon (which also owns the activity feed and history replay).
+  The app tracks the last time it heard *any* agent signal (presence, msg,
+  typing, status, activity…) and shows **online** when fresh, **not listening**
+  when stale (relay up but the session's daemon is gone), clearing a stuck typing
+  indicator and warning the user on send. Not rendered. (`bridge.py wait` is a
+  pure doorbell and does not beat unless run standalone with `--presence`.)
 - **`typing`** — ephemeral "thinking" indicator; `state:"on"|"off"`. Not stored
   as a message. `bridge.py wait` auto-publishes `state:"on"` the moment a message
   is received (unless `--no-ack`), and the app also shows it optimistically on

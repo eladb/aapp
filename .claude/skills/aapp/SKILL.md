@@ -202,6 +202,12 @@ activity feed keeps working regardless.
 
 ### Optional: stream the whole session as an activity feed
 
+`bridge.py tail` is the session's **always-on daemon**: it streams the activity
+feed, serves durable **history replays** to late-joining phones, *and* beats
+**presence** (so the app's online/offline indicator is accurate). It's the one
+long-lived process; `wait` stays a pure doorbell (block → exit to wake the agent
+→ re-arm). `install.sh` starts the daemon for you.
+
 If the user wants the chat to show **everything happening in the session** (the
 model's messages, each tool call, and terminal-side user turns) — not just your
 explicit replies — run the transcript tailer in the background:

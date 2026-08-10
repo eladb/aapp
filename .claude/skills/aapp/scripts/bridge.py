@@ -17,9 +17,14 @@ Subcommands
               --text or stdin ("-").
   typing      Publish a typing indicator (on/off).
   status      Publish a transient status/system line (e.g. "running tests").
-  wait        Block until the next *complete* user message arrives, print it
-              as JSON, and exit. Reassembles multi-part messages. Advances
-              the read cursor so messages are processed exactly once.
+  wait        The doorbell: block until the next *complete* user message
+              arrives, print it as JSON, and exit (so the harness re-invokes the
+              agent to reply). Reassembles multi-part messages; advances the read
+              cursor so messages are processed exactly once.
+  tail        The always-on daemon: stream the session transcript as an activity
+              feed, serve durable history replays, AND beat presence — i.e. it
+              owns everything "ambient" so `wait` can stay a pure doorbell. This
+              is the one process install.sh keeps running.
   history     Print all cached messages for the topic as JSON lines.
   serve       Stay subscribed and replay the durable transcript to any client
               that asks to sync (so late-joining phones rebuild full history
@@ -847,10 +852,28 @@ def tail_transcript(state, args):
             })
         except Exception:
             pass
+    # Presence: this always-on daemon owns the heartbeat, so the app reads the
+    # session as online whenever the connection is live (not just while the
+    # `wait` doorbell happens to be armed). Beat immediately, then periodically.
+    beat = {"t": 0.0}
+
+    def maybe_beat():
+        if not getattr(args, "presence", True):
+            return
+        now = time.time()
+        if now - beat["t"] >= PRESENCE_INTERVAL:
+            beat["t"] = now
+            try:
+                send_signal(state, "presence")
+            except Exception:
+                pass
+
+    maybe_beat()
     deadline = time.time() + args.timeout if args.timeout else None
     while True:
         if deadline and time.time() > deadline:
             break
+        maybe_beat()
         try:
             cur = os.path.getsize(path)
         except OSError:
@@ -1248,8 +1271,10 @@ def build_parser():
                    help="also return user typing/status signals")
     w.add_argument("--no-ack", dest="ack", action="store_false", default=True,
                    help="don't auto-show a thinking indicator when a message arrives")
-    w.add_argument("--no-presence", dest="presence", action="store_false", default=True,
-                   help="don't publish presence heartbeats while listening")
+    w.add_argument("--presence", dest="presence", action="store_true", default=False,
+                   help="also beat presence from the doorbell (default off — the "
+                        "always-on `tail` daemon owns presence; use this only for a "
+                        "standalone wait with no daemon running)")
     w.add_argument("--timeout-exit", action="store_true",
                    help="exit 22 on idle timeout (legacy) instead of exit 0 with a "
                         "{\"type\":\"timeout\"} marker")
