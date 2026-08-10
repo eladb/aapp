@@ -83,6 +83,9 @@ PROTOCOL_VERSION = 1
 REPLAY_MAX_DEFAULT = 400     # most-recent timeline items (chat+activity) to replay
 REPLAY_THROTTLE = 0.12       # seconds between replay publishes (be nice to ntfy)
 SERVE_DEDUPE_SECONDS = 120   # don't replay to the same client more than this often
+# While `wait` is listening it publishes a tiny presence beat this often so the
+# app can show an accurate online/offline state (and warn if no one's listening).
+PRESENCE_INTERVAL = 25       # seconds between presence beats
 
 
 # --------------------------------------------------------------------------
@@ -373,7 +376,7 @@ def parse_ntfy_line(line):
     return nid, env
 
 
-def stream_messages(state, since, timeout, deadline=None):
+def stream_messages(state, since, timeout, deadline=None, on_tick=None):
     """Yield (ntfy_id, envelope) for real MESSAGE events on the ntfy stream.
     ntfy sends keepalive/open events (~45s) so an idle connection stays open;
     those are skipped and never yielded, so callers only ever advance their
@@ -385,6 +388,10 @@ def stream_messages(state, since, timeout, deadline=None):
     resp = http_open(url, timeout=timeout)
     try:
         for raw in resp:
+            # tick on every line (incl. ntfy keepalives) so callers can emit a
+            # periodic presence beat even when no real messages are arriving
+            if on_tick is not None:
+                on_tick()
             if deadline is not None and time.time() >= deadline:
                 return
             nid, env = parse_ntfy_line(
@@ -410,11 +417,31 @@ def wait_for_user_message(state, args):
     seen_seq = {}
     expected_total = {}
 
+    # Presence heartbeat: publish a tiny beat now and periodically while we listen
+    # (also on every keepalive via on_tick) so the app can show an accurate
+    # online/offline state and warn the user if no listener is running.
+    beat = {"t": 0.0}
+
+    def maybe_beat():
+        now = time.time()
+        if now - beat["t"] >= PRESENCE_INTERVAL:
+            beat["t"] = now
+            try:
+                send_signal(state, "presence")
+            except Exception:
+                pass
+
+    if getattr(args, "presence", True):
+        maybe_beat()  # announce we're listening right away
+
     while time.time() < deadline:
+        if getattr(args, "presence", True):
+            maybe_beat()
         remaining = max(1, int(deadline - time.time()))
-        read_timeout = min(remaining, 55)  # < ntfy keepalive gap, bounded
+        read_timeout = min(remaining, 45)  # < ntfy keepalive gap, bounded
+        tick = maybe_beat if getattr(args, "presence", True) else None
         try:
-            for nid, env in stream_messages(state, since, read_timeout, deadline=deadline):
+            for nid, env in stream_messages(state, since, read_timeout, deadline=deadline, on_tick=tick):
                 # advance the cursor ONLY on real message ids (keepalive ids are
                 # not valid `since=` cursors)
                 if nid:
@@ -1221,6 +1248,8 @@ def build_parser():
                    help="also return user typing/status signals")
     w.add_argument("--no-ack", dest="ack", action="store_false", default=True,
                    help="don't auto-show a thinking indicator when a message arrives")
+    w.add_argument("--no-presence", dest="presence", action="store_false", default=True,
+                   help="don't publish presence heartbeats while listening")
     w.add_argument("--timeout-exit", action="store_true",
                    help="exit 22 on idle timeout (legacy) instead of exit 0 with a "
                         "{\"type\":\"timeout\"} marker")

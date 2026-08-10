@@ -562,6 +562,9 @@
     if(!env || env.v!==1) return;
     if(env.cid===CID) return;            // ignore our own echoes
     var role=env.role, type=env.type||"msg";
+    // Any signal from the agent side proves the listener is alive right now.
+    if(role!=="user"){ noteAgent(); renderStatus(); }
+    if(type==="presence") return;        // liveness beat only — nothing to render
     if(type==="typing"){ if(role!=="user") setTyping(env.state==="on"); return; }
     if(type==="status"){ if(role!=="user") showStatus(env.text); return; }
     if(type==="activity"){ addActivity(env, ntfyId); return; }
@@ -626,15 +629,35 @@
     statusTimer=setTimeout(function(){ setConnected(connState); },4000);
   }
 
-  // ---------- connection ----------
+  // ---------- connection + agent presence ----------
+  // Two independent things: the RELAY link (are we connected to ntfy?) and the
+  // AGENT LISTENER (is a `bridge.py wait` actually running to receive messages?).
+  // The agent beats a "presence" envelope every ~25s while listening; if we
+  // haven't heard any agent signal recently, the listener is down even if the
+  // relay is fine — so a message would sit unanswered.
   var connState="connecting";
-  function setConnected(s){
-    connState=s;
-    if(s==="live"){ dotEl.className="dot live"; statusEl.textContent="online"; }
-    else if(s==="connecting"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; }
-    else if(s==="offline"){ dotEl.className="dot err"; statusEl.textContent="offline"; }
-    else { dotEl.className="dot warn"; statusEl.textContent="reconnecting…"; }
+  var bootTs=Date.now(), lastAgentTs=0;
+  var AGENT_TTL=90000;    // agent considered offline after this much silence
+  var BOOT_GRACE=55000;   // grace before declaring offline when we've heard nothing yet
+  var warnedOffline=false;
+  function noteAgent(){ lastAgentTs=Date.now(); }
+  function agentState(){
+    if(lastAgentTs && (Date.now()-lastAgentTs)<AGENT_TTL) return "online";
+    if(!lastAgentTs && (Date.now()-bootTs)<BOOT_GRACE) return "unknown";
+    return "offline";
   }
+  function renderStatus(){
+    // relay problems take priority over agent presence
+    if(connState==="offline"){ dotEl.className="dot err"; statusEl.textContent="offline"; return; }
+    if(connState==="connecting"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; return; }
+    if(connState==="reconnecting"){ dotEl.className="dot warn"; statusEl.textContent="reconnecting…"; return; }
+    var a=agentState();
+    if(a==="online"){ dotEl.className="dot live"; statusEl.textContent="online"; warnedOffline=false; }
+    else if(a==="unknown"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; }
+    else { dotEl.className="dot warn"; statusEl.textContent="not listening"; if(typingActive) setTyping(false); }
+  }
+  function setConnected(s){ connState=s; renderStatus(); }
+  setInterval(renderStatus, 8000);   // re-evaluate presence as time passes
   function endpointJSON(){ return server+"/"+encodeURIComponent(topic)+"/json?since="+encodeURIComponent(cursor); }
 
   var stopped=false, backoff=1000;
@@ -730,8 +753,16 @@
     // check also guards this, but be explicit)
     seenParts[m.mid]=new Set(built.envs.map(function(_,i){return i;}));
     upsertRow(m); save();
-    setTyping(true);   // instant "thinking" affordance; the agent's wait ack and
-                       // reply take over from here (self-expires if nothing comes)
+    // If no listener is running, don't show a misleading "…" — tell the user the
+    // message is queued and how to bring the listener up. Otherwise show the
+    // instant thinking affordance (the agent's ack/reply take over from here).
+    if(agentState()==="offline"){
+      if(!warnedOffline){ warnedOffline=true;
+        addSystem("⚠︎ The agent isn't listening right now — your message is saved and will arrive once the listener runs. In your Claude Code session start it: python3 .claude/skills/aapp/scripts/bridge.py wait — or ask the agent to resume.");
+      }
+    } else {
+      setTyping(true);
+    }
     inputEl.value=""; autoGrow(); sendEl.disabled=true;
     try{
       for(var i=0;i<built.envs.length;i++){ await publish(built.envs[i]); }
