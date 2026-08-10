@@ -94,6 +94,15 @@ It speaks the exact same wire protocol as `bridge.py`, so every client on a
 topic interoperates. Full API in
 [`reference/client.md`](.claude/skills/aapp/reference/client.md).
 
+## Tests
+
+[`test/`](test/) has a library unit test, an app-script integration test (run in
+a Node `vm`, no browser), and a browser end-to-end that drives the real
+`app.html` in Chromium against the real `bridge.py` over a local
+ntfy-compatible relay. Run the lot with `test/run.sh` (see
+[`test/README.md`](test/README.md)); CI runs them on every push and PR. Tests
+live at the repo root, so `install.sh` never ships them into a project.
+
 ## Layout
 
 | File | Role |

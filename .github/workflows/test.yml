@@ -1,0 +1,47 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  # Fast, dependency-free checks: the inline-sync guard and the two Node tests
+  # (library unit + app-script integration). No browser required.
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Inline client sync check
+        run: python3 .claude/skills/aapp/scripts/sync-client.py --check
+      - name: Library unit test
+        run: node test/client.test.js
+      - name: App-script integration test
+        run: node test/app.test.js
+
+  # Full browser end-to-end: real app.html in Chromium + real bridge.py over a
+  # local ntfy-compatible relay. Kept separate so a browser/env issue never
+  # masks the unit job.
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Install Playwright + Chromium
+        run: |
+          npm install -g playwright
+          npx --yes playwright install --with-deps chromium
+      - name: End-to-end
+        run: node test/e2e.test.js
