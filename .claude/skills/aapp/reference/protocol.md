@@ -142,7 +142,8 @@ feed. Consequences:
 ## Reference implementations
 
 - Agent side: `scripts/bridge.py` (`send` chunks; `wait` reassembles).
-- Phone side: `app.html` (fetch-stream reader with cursor + poll fallback).
-- Reusable client: `aapp-client.js` — the phone-side protocol logic with no
-  DOM, for building your own client (browser or Node). See
+- Reusable client: `aapp-client.js` — the phone-side protocol logic (transport,
+  de-dupe, reassembly, presence, chunked send) with no DOM. Browser or Node. See
   [`client.md`](client.md).
+- Phone side: `app.html` is the UI built on `aapp-client.js` (inlined verbatim so
+  the file stays self-contained; kept in sync by `scripts/sync-client.py`).

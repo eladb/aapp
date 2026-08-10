@@ -1,10 +1,15 @@
 # `aapp-client.js` — reusable JavaScript client
 
-`aapp-client.js` is the aapp **v1 protocol client**, extracted from the phone
-app (`app.html`) with none of the DOM. Point it at an ntfy relay + topic (or a
-full aapp link) and it connects, de-dupes, reassembles multi-part messages,
-tracks agent presence, and lets you publish messages, attachments, and sync
-requests. You bring the UI — or none at all (it runs headless in Node).
+`aapp-client.js` is the aapp **v1 protocol client** with none of the DOM. Point
+it at an ntfy relay + topic (or a full aapp link) and it connects, de-dupes,
+reassembles multi-part messages, tracks agent presence, and lets you publish
+messages, attachments, and sync requests. You bring the UI — or none at all (it
+runs headless in Node).
+
+The phone app is itself built on this client: `app.html` inlines `aapp-client.js`
+verbatim (to stay a single self-contained file) and wires the UI to its events.
+That inlined copy is regenerated from this file by `scripts/sync-client.py
+--write` and verified in CI by `--check`, so the two never drift.
 
 It mirrors the reference implementations byte-for-byte: same envelope shape,
 same chunking budget (`MAX_ENVELOPE_BYTES = 3000`, per-part overhead `+8`), same

@@ -272,28 +272,786 @@
 </div>
 <div class="toast" id="toast"></div>
 
+<!-- aapp-client.js:begin — verbatim inline of aapp-client.js so this file stays
+     self-contained (works from any raw/static host). Do NOT hand-edit between
+     these markers; edit ../aapp-client.js and run scripts/sync-client.py --write.
+     CI (scripts/sync-client.py --check) fails the deploy if the two drift. -->
+<script>
+/*!
+ * aapp-client.js — a tiny, dependency-free client for the aapp v1 wire protocol.
+ *
+ * This is the reusable client extracted from the phone app (`app.html`): all of
+ * the transport + protocol logic with none of the DOM. Point it at an ntfy
+ * relay + topic (or a full aapp link) and it will connect, de-dupe, reassemble
+ * multi-part messages, track agent presence, and let you publish chat messages,
+ * attachments, and sync requests. You supply the UI (or none at all).
+ *
+ * The wire protocol is documented in `reference/protocol.md`; the two reference
+ * implementations that speak it are the phone app (`app.html`) and the agent
+ * bridge (`scripts/bridge.py`). This library mirrors their semantics exactly —
+ * same envelope shape, same byte-aware chunking budget, same presence timings,
+ * same de-dupe rules — so it interoperates with both.
+ *
+ * Runs anywhere there is a `fetch` with a streaming response body: modern
+ * browsers and Node 18+. No build step, no dependencies. Ships as UMD so it
+ * works as a `<script>` (global `AappClient`), CommonJS `require`, or AMD.
+ *
+ * Quick start (browser):
+ *
+ *   const c = AappClient.fromLink(location.href);   // or new AappClient({server, topic})
+ *   c.on("msg",        m => renderBubble(m));        // streaming agent/user messages
+ *   c.on("activity",   a => renderActivity(a));      // session steps (summaries)
+ *   c.on("typing",     t => showDots(t.state === "on"));
+ *   c.on("presence",   p => setOnline(p.state === "online"));
+ *   c.on("connection", s => setDot(s.state));        // relay link state
+ *   c.start();
+ *   await c.sendText("hello from my phone");
+ *
+ * License: MIT (see repo LICENSE).
+ */
+(function (root, factory) {
+  if (typeof module === "object" && module.exports) module.exports = factory();
+  else if (typeof define === "function" && define.amd) define([], factory);
+  else root.AappClient = factory();
+})(typeof self !== "undefined" ? self : this, function () {
+  "use strict";
+
+  // ---- protocol constants (keep in sync with app.html / bridge.py) ----
+  var PROTOCOL_VERSION = 1;
+  var DEFAULT_SERVER = "https://ntfy.sh";
+  var MAX_ENVELOPE_BYTES = 3000; // keep each JSON body < ~3 KB so ntfy never
+  //                                rejects or attaches an oversized message
+  var AGENT_TTL = 90000; // agent considered offline after this much silence
+  var BOOT_GRACE = 55000; // grace before declaring offline when we've heard nothing yet
+  var PRESENCE_POLL = 8000; // how often to re-evaluate presence as time passes
+
+  // ---- environment helpers ----
+  var hasFetch = typeof fetch !== "undefined";
+  var _TE = typeof TextEncoder !== "undefined" ? new TextEncoder() : null;
+  function now() {
+    return Date.now();
+  }
+  function isOnline() {
+    return typeof navigator === "undefined" || navigator.onLine !== false;
+  }
+  function randId(prefix) {
+    return (
+      (prefix || "") +
+      Date.now().toString(36) +
+      Math.random().toString(36).slice(2, 8)
+    );
+  }
+
+  // Byte length of a string as it lands on the wire. TextEncoder counts UTF-8
+  // bytes; the fallback approximates the same via encodeURIComponent.
+  function byteLen(s) {
+    if (_TE) return _TE.encode(s).length;
+    return unescape(encodeURIComponent(s)).length;
+  }
+
+  // ---- link / hash parsing ----------------------------------------------
+  // An aapp link carries the session in its URL *fragment* (never sent to the
+  // host): `…/app.html#s=<server>&t=<topic>&n=<name>`. Parse either a full URL,
+  // a bare "#…" fragment, or an "s=…&t=…" query string.
+  function parseHash(input) {
+    var h = String(input || "");
+    var hashIdx = h.indexOf("#");
+    if (hashIdx >= 0) h = h.slice(hashIdx + 1);
+    h = h.replace(/^#/, "");
+    var q = {};
+    h.split("&").forEach(function (kv) {
+      if (!kv) return;
+      var i = kv.indexOf("=");
+      var k = i < 0 ? kv : kv.slice(0, i);
+      var v = i < 0 ? "" : decodeURIComponent(kv.slice(i + 1).replace(/\+/g, "%20"));
+      q[k] = v;
+    });
+    return q;
+  }
+
+  // Extract {server, topic, name} from an aapp link (or fragment/query string).
+  function parseLink(link) {
+    var q = parseHash(link);
+    var server = (q.s || "").replace(/\/+$/, "");
+    return {
+      server: server || DEFAULT_SERVER,
+      topic: q.t || "",
+      name: q.n || "",
+    };
+  }
+
+  // Build the canonical shareable link for a session.
+  function buildLink(opts) {
+    opts = opts || {};
+    var appUrl = opts.appUrl || "";
+    var parts = [
+      "s=" + encodeURIComponent((opts.server || DEFAULT_SERVER).replace(/\/+$/, "")),
+      "t=" + encodeURIComponent(opts.topic || ""),
+    ];
+    if (opts.name) parts.push("n=" + encodeURIComponent(opts.name));
+    return appUrl + "#" + parts.join("&");
+  }
+
+  // ---- byte-aware message chunking --------------------------------------
+  // Mirrors app.html's makeEnvelopes and bridge.py's send-side chunking: split
+  // `text` so each envelope's JSON body stays under MAX_ENVELOPE_BYTES, measuring
+  // every code point as it serializes on the wire (JSON escapes non-ASCII to
+  // \uXXXX). Parts share one `mid`; receivers reassemble by `mid` in `seq` order
+  // until `last`. Returns { mid, envelopes }.
+  function chunkText(text, cid, opts) {
+    opts = opts || {};
+    var mid = opts.mid || randId("u");
+    var ts = opts.ts || now();
+    var role = opts.role || "user";
+    var skeleton = {
+      v: PROTOCOL_VERSION,
+      cid: cid,
+      role: role,
+      type: "msg",
+      mid: mid,
+      seq: 0,
+      last: true,
+      text: "",
+      ts: ts,
+    };
+    var overhead = byteLen(JSON.stringify(skeleton)) + 8;
+    var budget = Math.max(200, MAX_ENVELOPE_BYTES - overhead);
+    var parts = [];
+    var cur = "";
+    var curB = 0;
+    var chars = Array.from(String(text)); // iterate by code point (astral-safe)
+    for (var idx = 0; idx < chars.length; idx++) {
+      var ch = chars[idx];
+      var b = byteLen(JSON.stringify(ch)) - 2; // minus the surrounding quotes
+      if (curB + b > budget && cur) {
+        parts.push(cur);
+        cur = "";
+        curB = 0;
+      }
+      cur += ch;
+      curB += b;
+    }
+    parts.push(cur);
+    var envelopes = parts.map(function (p, i) {
+      return {
+        v: PROTOCOL_VERSION,
+        cid: cid,
+        role: role,
+        type: "msg",
+        mid: mid,
+        seq: i,
+        last: i === parts.length - 1,
+        text: p,
+        ts: ts,
+      };
+    });
+    return { mid: mid, envelopes: envelopes };
+  }
+
+  // ---- tiny event emitter ------------------------------------------------
+  function Emitter() {
+    this._handlers = {};
+  }
+  Emitter.prototype.on = function (type, fn) {
+    (this._handlers[type] || (this._handlers[type] = [])).push(fn);
+    return this;
+  };
+  Emitter.prototype.off = function (type, fn) {
+    var hs = this._handlers[type];
+    if (!hs) return this;
+    if (!fn) {
+      delete this._handlers[type];
+      return this;
+    }
+    this._handlers[type] = hs.filter(function (h) {
+      return h !== fn;
+    });
+    return this;
+  };
+  Emitter.prototype.once = function (type, fn) {
+    var self = this;
+    function wrap(payload) {
+      self.off(type, wrap);
+      fn(payload);
+    }
+    return this.on(type, wrap);
+  };
+  Emitter.prototype.emit = function (type, payload) {
+    var hs = this._handlers[type];
+    if (hs) {
+      hs.slice().forEach(function (h) {
+        try {
+          h(payload);
+        } catch (e) {
+          if (type !== "error") this.emit("error", { error: e, context: "handler:" + type });
+        }
+      }, this);
+    }
+    return this;
+  };
+
+  // =======================================================================
+  //  AappClient
+  // =======================================================================
+  //
+  // options:
+  //   server   relay base URL (default https://ntfy.sh)
+  //   topic    ntfy topic (the shared secret) — required to start
+  //   cid      this instance's id (default random "js-…"); receivers ignore
+  //            envelopes carrying their own cid, so this suppresses echoes
+  //   cursor   ntfy read cursor to resume from ("all" replays the ~12h cache)
+  //   mode     "auto" | "stream" | "poll" (default "auto")
+  //   fetch    fetch implementation to use (default global fetch)
+  //   presence whether to run the presence re-evaluation timer (default true)
+  //   maxBackoff  cap on reconnect backoff ms (default 15000)
+  //
+  function AappClient(options) {
+    if (!(this instanceof AappClient)) return new AappClient(options);
+    Emitter.call(this);
+    options = options || {};
+
+    this.server = (options.server || DEFAULT_SERVER).replace(/\/+$/, "");
+    this.topic = options.topic || "";
+    this.name = options.name || "";
+    this.cid = options.cid || randId("js-");
+    this.cursor = options.cursor || "all";
+    this.mode = options.mode || "auto";
+    this.maxBackoff = options.maxBackoff || 15000;
+    this._fetch = options.fetch || (hasFetch ? fetch.bind(null) : null);
+    this._presenceEnabled = options.presence !== false;
+
+    // connection state
+    this.connState = "idle"; // idle|connecting|live|reconnecting|offline
+    this._stopped = true;
+    this._backoff = 1000;
+    this._loopPromise = null;
+
+    // de-dupe + reassembly buffers
+    this._seenNtfy = Object.create(null); // ntfy line id -> true
+    this._seenParts = Object.create(null); // mid -> Set(seq)  (msg/system)
+    this._seenAtt = Object.create(null); // mid -> true (attach)
+    this._seenAct = Object.create(null); // mid -> true (activity)
+    this._msgs = Object.create(null); // mid -> {role,type,ts,parts,done}
+    this._handled = 0; // count of inbound envelopes, for periodic pruning
+
+    // presence
+    this._bootTs = now();
+    this._lastAgentTs = 0;
+    this._presenceState = "unknown";
+    this._presenceTimer = null;
+
+    // bound listeners so we can remove them on stop
+    this._onOnline = this._handleNetOnline.bind(this);
+    this._onOffline = this._handleNetOffline.bind(this);
+  }
+  AappClient.prototype = Object.create(Emitter.prototype);
+  AappClient.prototype.constructor = AappClient;
+
+  // ---- static helpers / factory ----
+  AappClient.PROTOCOL_VERSION = PROTOCOL_VERSION;
+  AappClient.DEFAULT_SERVER = DEFAULT_SERVER;
+  AappClient.parseLink = parseLink;
+  AappClient.buildLink = buildLink;
+  AappClient.chunkText = chunkText;
+  AappClient.byteLen = byteLen;
+
+  // Construct a client from a full aapp link / URL fragment.
+  AappClient.fromLink = function (link, options) {
+    var parsed = parseLink(link);
+    var opts = {};
+    for (var k in options) if (Object.prototype.hasOwnProperty.call(options, k)) opts[k] = options[k];
+    if (opts.server == null) opts.server = parsed.server;
+    if (opts.topic == null) opts.topic = parsed.topic;
+    if (opts.name == null) opts.name = parsed.name;
+    return new AappClient(opts);
+  };
+
+  // ---- lifecycle --------------------------------------------------------
+  AappClient.prototype.start = function () {
+    if (!this._stopped) return this;
+    if (!this.topic) throw new Error("aapp: no topic — nothing to connect to");
+    if (!this._fetch) throw new Error("aapp: no fetch available (pass options.fetch)");
+    this._stopped = false;
+    if (typeof addEventListener === "function") {
+      addEventListener("online", this._onOnline);
+      addEventListener("offline", this._onOffline);
+    }
+    if (this._presenceEnabled && typeof setInterval === "function") {
+      var self = this;
+      this._presenceTimer = setInterval(function () {
+        self._evalPresence();
+      }, PRESENCE_POLL);
+    }
+    var streaming = this.mode === "poll" ? false : this.mode === "stream" ? true : supportsStreaming();
+    this._loopPromise = streaming ? this._streamLoop() : this._pollLoop();
+    return this;
+  };
+
+  AappClient.prototype.stop = function () {
+    this._stopped = true;
+    if (this._presenceTimer) {
+      clearInterval(this._presenceTimer);
+      this._presenceTimer = null;
+    }
+    if (typeof removeEventListener === "function") {
+      removeEventListener("online", this._onOnline);
+      removeEventListener("offline", this._onOffline);
+    }
+    if (this._abort) {
+      try {
+        this._abort.abort();
+      } catch (e) {}
+    }
+    this._setConn("idle");
+    return this;
+  };
+
+  // ---- outbound: publish / send -----------------------------------------
+  // Low-level publish of a raw envelope. Fills in v/cid/ts when absent.
+  AappClient.prototype.publish = function (env) {
+    if (!this.topic) return Promise.reject(new Error("aapp: no topic"));
+    var full = {};
+    for (var k in env) if (Object.prototype.hasOwnProperty.call(env, k)) full[k] = env[k];
+    if (full.v == null) full.v = PROTOCOL_VERSION;
+    if (full.cid == null) full.cid = this.cid;
+    if (full.ts == null) full.ts = now();
+    var url = this.server + "/" + encodeURIComponent(this.topic);
+    return this._fetch(url, {
+      method: "POST",
+      body: JSON.stringify(full),
+      headers: { "Content-Type": "application/json", Title: "aapp" },
+    }).then(function (resp) {
+      if (!resp || !resp.ok) throw new Error("aapp: publish failed " + (resp && resp.status));
+      return resp;
+    });
+  };
+
+  // Send a chat message as a `user` (default) — chunks and publishes each part
+  // in order. Resolves with { mid } once all parts are on the wire.
+  AappClient.prototype.sendText = function (text, opts) {
+    opts = opts || {};
+    text = String(text == null ? "" : text);
+    if (!text.trim()) return Promise.reject(new Error("aapp: empty message"));
+    var built = chunkText(text, this.cid, { role: opts.role || "user", mid: opts.mid });
+    var self = this;
+    var chain = Promise.resolve();
+    built.envelopes.forEach(function (env) {
+      chain = chain.then(function () {
+        return self.publish(env);
+      });
+    });
+    return chain.then(function () {
+      return { mid: built.mid, parts: built.envelopes.length };
+    });
+  };
+
+  // Upload a Blob/Buffer to the relay and announce it as an `attach` envelope.
+  // `body` is anything ntfy's PUT accepts (browser Blob/File, or bytes in Node).
+  // Resolves with the published attach envelope (incl. hosted url).
+  AappClient.prototype.sendAttachment = function (body, meta) {
+    meta = meta || {};
+    var self = this;
+    var mid = meta.mid || randId("a");
+    var name = meta.name || "file";
+    var mime = meta.mime || "application/octet-stream";
+    var url = this.server + "/" + encodeURIComponent(this.topic);
+    return this._fetch(url, {
+      method: "PUT",
+      body: body,
+      headers: { Filename: name, "Content-Type": mime },
+    })
+      .then(function (resp) {
+        if (!resp || !resp.ok) throw new Error("aapp: upload failed " + (resp && resp.status));
+        return resp.json();
+      })
+      .then(function (j) {
+        if (!j.attachment || !j.attachment.url) throw new Error("aapp: no attachment url");
+        var att = j.attachment;
+        var env = {
+          v: PROTOCOL_VERSION,
+          cid: self.cid,
+          role: meta.role || "user",
+          type: "attach",
+          mid: mid,
+          seq: 0,
+          last: true,
+          url: att.url,
+          name: att.name || name,
+          mime: att.type || mime,
+          size: att.size != null ? att.size : meta.size,
+          w: meta.w,
+          h: meta.h,
+          text: meta.text || "",
+          ts: now(),
+        };
+        return self.publish(env).then(function () {
+          return env;
+        });
+      });
+  };
+
+  // Ask the agent to replay durable history (sent once on boot by a fresh
+  // client). The agent re-broadcasts its log tagged replay:true.
+  AappClient.prototype.requestSync = function () {
+    return this.publish({
+      role: "user",
+      type: "sync",
+      mid: randId("sync-"),
+      seq: 0,
+      last: true,
+    });
+  };
+
+  // Publish a typing indicator (`state` "on"|"off"). Rarely needed from a UI —
+  // the agent bridge drives typing — but handy for tools driving the protocol.
+  AappClient.prototype.sendTyping = function (on, role) {
+    return this.publish({ role: role || "user", type: "typing", state: on ? "on" : "off" });
+  };
+
+  // ---- presence ---------------------------------------------------------
+  // "online"  — heard an agent-side signal within AGENT_TTL
+  // "unknown" — haven't heard anything yet, still within the boot grace window
+  // "offline" — relay may be fine but no listener is answering
+  AappClient.prototype.agentState = function () {
+    if (this._lastAgentTs && now() - this._lastAgentTs < AGENT_TTL) return "online";
+    if (!this._lastAgentTs && now() - this._bootTs < BOOT_GRACE) return "unknown";
+    return "offline";
+  };
+  AappClient.prototype.isAgentOnline = function () {
+    return this.agentState() === "online";
+  };
+  AappClient.prototype._noteAgent = function () {
+    this._lastAgentTs = now();
+    this._evalPresence();
+  };
+  AappClient.prototype._evalPresence = function () {
+    var s = this.agentState();
+    if (s !== this._presenceState) {
+      this._presenceState = s;
+      this.emit("presence", { state: s });
+    }
+  };
+
+  // ---- inbound: envelope handling ---------------------------------------
+  AappClient.prototype._handleEnvelope = function (env, ntfyId) {
+    if (ntfyId) {
+      if (this._seenNtfy[ntfyId]) return;
+      this._seenNtfy[ntfyId] = true;
+    }
+    if ((++this._handled & 511) === 0) this._prune(); // bound de-dupe/buffer growth
+    if (!env || env.v !== PROTOCOL_VERSION) return; // unknown/forward-incompatible
+    if (env.cid === this.cid) return; // ignore our own echoes
+
+    var role = env.role;
+    var type = env.type || "msg";
+
+    // Any signal from the agent side proves a listener is alive right now.
+    if (role !== "user") this._noteAgent();
+
+    this.emit("envelope", { env: env, ntfyId: ntfyId });
+
+    switch (type) {
+      case "presence":
+        return; // liveness beat only — noteAgent already handled it
+      case "typing":
+        if (role !== "user") this.emit("typing", { state: env.state === "on" ? "on" : "off", role: role });
+        return;
+      case "status":
+        if (role !== "user" && env.text) this.emit("status", { text: env.text, role: role });
+        return;
+      case "activity":
+        return this._handleActivity(env, ntfyId);
+      case "title":
+        if (env.text) {
+          this.name = String(env.text).trim() || this.name;
+          this.emit("title", { text: env.text });
+        }
+        return;
+      case "icon":
+        this.emit("icon", { emoji: env.emoji || null, url: env.url || null, raw: env });
+        return;
+      case "reload":
+        if (role !== "user") this.emit("reload", { force: !!env.force });
+        return;
+      case "sync":
+        this.emit("sync", { role: role });
+        return;
+      case "sync-done":
+        this.emit("sync-done", { count: env.count || 0 });
+        return;
+      case "attach":
+        return this._handleAttach(env, ntfyId);
+      case "msg":
+      case "system":
+        return this._handleMsg(env, ntfyId);
+      default:
+        return; // unknown type — ignore (forward-compatible)
+    }
+  };
+
+  AappClient.prototype._handleMsg = function (env, ntfyId) {
+    var mid = env.mid || ntfyId || randId("m");
+    var seq = env.seq || 0;
+    var set = this._seenParts[mid] || (this._seenParts[mid] = new Set());
+    if (set.has(seq)) return; // duplicate part
+    set.add(seq);
+
+    var m = this._msgs[mid];
+    if (!m) {
+      m = {
+        mid: mid,
+        role: env.role,
+        type: env.type,
+        ts: env.ts || now(),
+        done: false,
+        replay: !!env.replay,
+        cid: env.cid,
+        parts: Object.create(null),
+      };
+      this._msgs[mid] = m;
+    }
+    m.parts[seq] = env.text || "";
+    m.text = Object.keys(m.parts)
+      .map(Number)
+      .sort(function (a, b) {
+        return a - b;
+      })
+      .map(function (k) {
+        return m.parts[k];
+      })
+      .join("");
+    if (env.last) m.done = true;
+
+    var payload = {
+      mid: mid,
+      role: m.role,
+      type: m.type,
+      text: m.text,
+      ts: m.ts,
+      done: m.done,
+      seq: seq,
+      last: !!env.last,
+      replay: m.replay,
+    };
+    this.emit(m.type === "system" ? "system" : "msg", payload);
+  };
+
+  AappClient.prototype._handleAttach = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenAtt[mid]) return;
+    this._seenAtt[mid] = true;
+    this.emit("attach", {
+      mid: mid,
+      role: env.role,
+      type: "attach",
+      mime: env.mime || "",
+      url: env.url,
+      name: env.name,
+      size: env.size,
+      w: env.w,
+      h: env.h,
+      text: env.text || "",
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  AappClient.prototype._handleActivity = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenAct[mid]) return;
+    this._seenAct[mid] = true;
+    this.emit("activity", {
+      mid: mid,
+      kind: env.kind || "tool",
+      text: env.text || "",
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  // Bound the de-dupe indexes and reassembly buffers so a long-lived session
+  // doesn't grow without limit. String keys iterate in insertion order, so
+  // dropping the first N discards the oldest — the ones the read cursor has
+  // long since passed. (The UI keeps its own rendered-message cap separately.)
+  AappClient.prototype._prune = function () {
+    trimObject(this._seenNtfy, 4000, 2000);
+    trimObject(this._seenParts, 3000, 2000);
+    trimObject(this._seenAtt, 3000, 2000);
+    trimObject(this._seenAct, 3000, 2000);
+    trimObject(this._msgs, 3000, 2000);
+  };
+  function trimObject(obj, cap, keep) {
+    var ks = Object.keys(obj);
+    if (ks.length <= cap) return;
+    for (var i = 0; i < ks.length - keep; i++) delete obj[ks[i]];
+  }
+
+  // Feed a single ntfy JSON stream line (the outer `{"id","event","message"}`
+  // object, as text). Exposed for tests and custom transports.
+  AappClient.prototype.feedLine = function (line) {
+    line = String(line || "").trim();
+    if (!line) return;
+    var outer;
+    try {
+      outer = JSON.parse(line);
+    } catch (e) {
+      return;
+    }
+    if (outer.id) this.cursor = outer.id;
+    if (outer.event === "open") this.emit("open", outer);
+    if (outer.event !== "message") return;
+    var env;
+    try {
+      env = JSON.parse(outer.message);
+    } catch (e) {
+      return;
+    }
+    this._handleEnvelope(env, outer.id);
+  };
+
+  // ---- transport: streaming + polling -----------------------------------
+  AappClient.prototype._endpoint = function (poll) {
+    var base = this.server + "/" + encodeURIComponent(this.topic) + "/json?";
+    if (poll) return base + "poll=1&since=" + encodeURIComponent(this.cursor);
+    return base + "since=" + encodeURIComponent(this.cursor);
+  };
+
+  AappClient.prototype._setConn = function (state) {
+    if (state === this.connState) return;
+    this.connState = state;
+    this.emit("connection", { state: state });
+  };
+
+  AappClient.prototype._streamLoop = function () {
+    var self = this;
+    return (async function () {
+      while (!self._stopped) {
+        self._setConn(self._haveHistory() ? "reconnecting" : "connecting");
+        try {
+          self._abort = typeof AbortController !== "undefined" ? new AbortController() : null;
+          var resp = await self._fetch(self._endpoint(false), {
+            signal: self._abort ? self._abort.signal : undefined,
+            headers: { Accept: "application/x-ndjson" },
+            cache: "no-store",
+          });
+          if (!resp.ok || !resp.body) throw new Error("bad response " + resp.status);
+          self._setConn("live");
+          self._backoff = 1000;
+          var reader = resp.body.getReader();
+          var dec = new TextDecoder();
+          var buf = "";
+          while (!self._stopped) {
+            var r = await reader.read();
+            if (r.done) break;
+            buf += dec.decode(r.value, { stream: true });
+            var idx;
+            while ((idx = buf.indexOf("\n")) >= 0) {
+              var l = buf.slice(0, idx);
+              buf = buf.slice(idx + 1);
+              self.feedLine(l);
+            }
+          }
+        } catch (e) {
+          if (self._stopped) return;
+        }
+        if (!isOnline()) {
+          self._setConn("offline");
+          await self._waitOnline();
+          continue;
+        }
+        self._setConn("reconnecting");
+        await sleep(self._backoff);
+        self._backoff = Math.min(self._backoff * 1.7, self.maxBackoff);
+      }
+    })();
+  };
+
+  AappClient.prototype._pollLoop = function () {
+    var self = this;
+    return (async function () {
+      while (!self._stopped) {
+        if (!isOnline()) {
+          self._setConn("offline");
+          await self._waitOnline();
+          continue;
+        }
+        try {
+          var resp = await self._fetch(self._endpoint(true), { cache: "no-store" });
+          if (!resp.ok) throw new Error("poll " + resp.status);
+          var txt = await resp.text();
+          self._setConn("live");
+          self._backoff = 1000;
+          txt.split("\n").forEach(function (l) {
+            self.feedLine(l);
+          });
+        } catch (e) {
+          self._setConn("reconnecting");
+        }
+        await sleep(1500);
+      }
+    })();
+  };
+
+  AappClient.prototype._haveHistory = function () {
+    for (var k in this._msgs) return true;
+    return false;
+  };
+  AappClient.prototype._handleNetOnline = function () {
+    this._backoff = 1000;
+  };
+  AappClient.prototype._handleNetOffline = function () {
+    this._setConn("offline");
+  };
+  AappClient.prototype._waitOnline = function () {
+    return new Promise(function (resolve) {
+      if (typeof addEventListener !== "function") return resolve();
+      function h() {
+        removeEventListener("online", h);
+        resolve();
+      }
+      addEventListener("online", h);
+    });
+  };
+
+  // ---- misc utils -------------------------------------------------------
+  function sleep(ms) {
+    return new Promise(function (r) {
+      setTimeout(r, ms);
+    });
+  }
+  function supportsStreaming() {
+    try {
+      return (
+        typeof ReadableStream !== "undefined" &&
+        typeof TextDecoder !== "undefined" &&
+        !!new Response(new Blob()).body
+      );
+    } catch (e) {
+      return false;
+    }
+  }
+
+  return AappClient;
+});
+</script>
+<!-- aapp-client.js:end -->
+
 <script>
 "use strict";
 (function(){
   // ---------- session params (from URL fragment or storage) ----------
-  function parseHash(){
-    var h = (location.hash||"").replace(/^#/,"");
-    var q = {}; h.split("&").forEach(function(kv){
-      if(!kv) return; var i=kv.indexOf("="); var k=i<0?kv:kv.slice(0,i);
-      var v=i<0?"":decodeURIComponent(kv.slice(i+1).replace(/\+/g,"%20")); q[k]=v;
-    });
-    return q;
-  }
+  // The wire protocol lives in AappClient (aapp-client.js, inlined just above);
+  // everything below is the UI built on top of it.
   var LS_LAST = "aapp:last";
-  var qp = parseHash();
-  var server = (qp.s || "").replace(/\/+$/,"");
-  var topic = qp.t || "";
-  var name = qp.n || "";
+  var qp = AappClient.parseLink(location.href);
+  var server = qp.server;
+  var topic = qp.topic;
+  var name = qp.name;
   if(!topic){ // resume last session if opened bare (e.g. from Home Screen without hash)
     try{ var last=JSON.parse(localStorage.getItem(LS_LAST)||"null");
       if(last){ server=last.server; topic=last.topic; name=last.name||""; } }catch(e){}
   }
-  if(!server) server = "https://ntfy.sh";
+  if(!server) server = AappClient.DEFAULT_SERVER;
   // a live title (streamed from the session) wins over the link's n= param
   try{ var storedName=topic && localStorage.getItem("aapp:name:"+topic); if(storedName) name=storedName; }catch(e){}
   if(name){ document.getElementById("title").textContent=name;
@@ -302,7 +1060,7 @@
   if(topic){ try{ localStorage.setItem(LS_LAST, JSON.stringify({server:server,topic:topic,name:name})); }catch(e){} }
 
   var STORE = "aapp:msgs:"+topic;
-  var CID = "web-"+Math.random().toString(36).slice(2,10);
+  var client = null;      // the AappClient instance (created in boot())
   // Deploy stamps this with the commit sha (see pages workflow). Left as the
   // literal placeholder when served unbuilt (e.g. raw repo file) -> auto-update
   // stays off so an unstamped copy never reload-loops.
@@ -341,7 +1099,7 @@
   }
   var saveT=null;
   function save(){ if(saveT) return; saveT=setTimeout(function(){ saveT=null;
-    try{ localStorage.setItem(STORE, JSON.stringify({messages:messages.slice(-400), cursor:cursor})); }catch(e){}
+    try{ localStorage.setItem(STORE, JSON.stringify({messages:messages.slice(-400), cursor:(client?client.cursor:cursor)})); }catch(e){}
   },250); }
 
   // ---------- markdown-lite (safe) ----------
@@ -581,59 +1339,41 @@
     copyText(txt); btn.textContent="Copied!"; setTimeout(function(){ btn.textContent="Copy"; },1200);
   });
 
-  // ---------- inbound envelope handling ----------
-  function handleEnvelope(env, ntfyId){
-    if(ntfyId){ if(seenNtfy[ntfyId]) return; seenNtfy[ntfyId]=true; }
-    if(!env || env.v!==1) return;
-    if(env.cid===CID) return;            // ignore our own echoes
-    var role=env.role, type=env.type||"msg";
-    // Any signal from the agent side proves the listener is alive right now.
-    if(role!=="user"){ noteAgent(); renderStatus(); }
-    if(type==="presence") return;        // liveness beat only — nothing to render
-    if(type==="typing"){ if(role!=="user") setTyping(env.state==="on"); return; }
-    if(type==="status"){ if(role!=="user") showStatus(env.text); return; }
-    if(type==="activity"){ addActivity(env, ntfyId); return; }
-    if(type==="title"){ if(env.text) setAppName(env.text); return; }
-    if(type==="icon"){ setAppIcon(env); return; }
-    if(type==="reload"){ if(role!=="user") handleReloadSignal(env); return; }
-    if(type==="attach"){ addAttach(env, ntfyId); return; }
-    if(role==="user" && type==="msg"){
-      // our own user messages already shown optimistically; show if from elsewhere
-    }
-    if(type!=="msg" && type!=="system") return;
-
-    var mid=env.mid || ntfyId || ("m"+Date.now());
-    var seq=env.seq||0;
-    var set=seenParts[mid] || (seenParts[mid]=new Set());
-    if(set.has(seq)) return; set.add(seq);
-
-    var m=byId[mid];
+  // ---------- inbound (driven by AappClient events) ----------
+  // The client owns the wire: transport, ntfy/mid/seq de-dupe, multi-part
+  // reassembly, echo suppression, and presence. These handlers just fold its
+  // events into the on-screen message model and re-render. We still guard by
+  // `mid` (byId / seenAct) so a history replay after reload — where the client
+  // starts fresh and re-emits messages we already persisted — is idempotent.
+  function onMsg(p){
+    var m=byId[p.mid];
     if(!m){
       // Link-as-identity: a user message from any device is "you", rendered the
-      // same everywhere (see makeRow). We keep cid only for echo suppression.
-      m={mid:mid, role:role, type:type, text:"", ts:env.ts||Date.now(), done:false, _parts:{},
-         cid:env.cid};
-      byId[mid]=m; messages.push(m);
-    }
-    m._parts[seq]=env.text||"";
-    m.text=Object.keys(m._parts).map(Number).sort(function(a,b){return a-b;}).map(function(k){return m._parts[k];}).join("");
-    if(env.last) m.done=true;
-    if(role==="agent" && type==="msg") setTyping(false);
+      // same everywhere (see makeRow).
+      m={mid:p.mid, role:p.role, type:"msg", text:p.text, ts:p.ts, done:p.done, cid:p.cid};
+      byId[p.mid]=m; messages.push(m);
+    } else { m.text=p.text; m.done=p.done; }
+    if(p.role==="agent") setTyping(false);
     upsertRow(m); save(); pruneMemory();
   }
-  function addAttach(env, ntfyId){
-    var mid=env.mid || ntfyId; if(!mid) return;
-    var set=seenParts[mid] || (seenParts[mid]=new Set()); if(set.has(0)) return; set.add(0);
-    var m={mid:mid, role:env.role, type:"attach", mime:env.mime||"", url:env.url, name:env.name,
-           size:env.size, w:env.w, h:env.h, text:env.text||"", ts:env.ts||Date.now(), done:true,
-           cid:env.cid};
-    byId[mid]=m; messages.push(m); upsertRow(m); save(); pruneMemory();
+  function onSystem(p){
+    var m=byId[p.mid];
+    if(!m){ m={mid:p.mid, role:"system", type:"system", text:p.text, ts:p.ts, done:true};
+            byId[p.mid]=m; messages.push(m); }
+    else { m.text=p.text; }
+    upsertRow(m); save(); pruneMemory();
+  }
+  function addAttach(p){
+    if(!p.mid || byId[p.mid]) return;
+    var m={mid:p.mid, role:p.role, type:"attach", mime:p.mime||"", url:p.url, name:p.name,
+           size:p.size, w:p.w, h:p.h, text:p.text||"", ts:p.ts, done:true};
+    byId[p.mid]=m; messages.push(m); upsertRow(m); save(); pruneMemory();
   }
   var seenAct={};
-  function addActivity(env, ntfyId){
-    var mid=env.mid || ntfyId; if(!mid || seenAct[mid]) return; seenAct[mid]=true;
-    var m={mid:mid, role:"activity", type:"activity", kind:env.kind||"tool", text:env.text||"", ts:env.ts||Date.now(), done:true};
-    byId[mid]=m; messages.push(m);
+  function addActivity(p){
+    if(!p.mid || seenAct[p.mid]) return; seenAct[p.mid]=true;
+    var m={mid:p.mid, role:"activity", type:"activity", kind:p.kind||"tool", text:p.text||"", ts:p.ts, done:true};
+    byId[p.mid]=m; messages.push(m);
     upsertRow(m); save(); pruneMemory();
     keepThinking();   // work is happening -> keep the thinking indicator alive
   }
@@ -654,134 +1394,42 @@
     statusTimer=setTimeout(function(){ setConnected(connState); },4000);
   }
 
-  // ---------- connection + agent presence ----------
-  // Two independent things: the RELAY link (are we connected to ntfy?) and the
-  // AGENT LISTENER (is a `bridge.py wait` actually running to receive messages?).
-  // The agent beats a "presence" envelope every ~25s while listening; if we
-  // haven't heard any agent signal recently, the listener is down even if the
-  // relay is fine — so a message would sit unanswered.
+  // ---------- connection + agent presence (state owned by AappClient) ----------
+  // Two independent things: the RELAY link (are we connected to ntfy? — the
+  // client's `connection` event) and the AGENT LISTENER (is a `bridge.py wait`
+  // actually running? — the client's `presence` event / agentState()). The
+  // relay can be live while no listener answers, so a message would sit
+  // unanswered; we surface that distinction here.
   var connState="connecting";
-  var bootTs=Date.now(), lastAgentTs=0;
-  var AGENT_TTL=90000;    // agent considered offline after this much silence
-  var BOOT_GRACE=55000;   // grace before declaring offline when we've heard nothing yet
   var warnedOffline=false;
-  function noteAgent(){ lastAgentTs=Date.now(); }
-  function agentState(){
-    if(lastAgentTs && (Date.now()-lastAgentTs)<AGENT_TTL) return "online";
-    if(!lastAgentTs && (Date.now()-bootTs)<BOOT_GRACE) return "unknown";
-    return "offline";
-  }
   function renderStatus(){
     // relay problems take priority over agent presence
     if(connState==="offline"){ dotEl.className="dot err"; statusEl.textContent="offline"; return; }
-    if(connState==="connecting"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; return; }
+    if(connState==="connecting"||connState==="idle"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; return; }
     if(connState==="reconnecting"){ dotEl.className="dot warn"; statusEl.textContent="reconnecting…"; return; }
-    var a=agentState();
+    var a=client?client.agentState():"unknown";
     if(a==="online"){ dotEl.className="dot live"; statusEl.textContent="online"; warnedOffline=false; }
     else if(a==="unknown"){ dotEl.className="dot warn"; statusEl.textContent="connecting…"; }
     else { dotEl.className="dot warn"; statusEl.textContent="not listening"; if(typingActive) setTyping(false); }
   }
   function setConnected(s){ connState=s; renderStatus(); }
   setInterval(renderStatus, 8000);   // re-evaluate presence as time passes
-  function endpointJSON(){ return server+"/"+encodeURIComponent(topic)+"/json?since="+encodeURIComponent(cursor); }
-
-  var stopped=false, backoff=1000;
-  function processLine(line){
-    line=line.trim(); if(!line) return;
-    var outer; try{ outer=JSON.parse(line); }catch(e){ return; }
-    if(outer.id){ cursor=outer.id; }
-    if(outer.event==="message"){
-      var env; try{ env=JSON.parse(outer.message); }catch(e){ return; }
-      handleEnvelope(env, outer.id);
-      save();
-    }
-  }
-
-  async function streamLoop(){
-    while(!stopped){
-      setConnected(messages.length?"reconnecting":"connecting");
-      try{
-        var ctrl=new AbortController();
-        var resp=await fetch(endpointJSON(), {signal:ctrl.signal, headers:{"Accept":"application/x-ndjson"}, cache:"no-store"});
-        if(!resp.ok || !resp.body){ throw new Error("bad response "+resp.status); }
-        setConnected("live"); backoff=1000;
-        var reader=resp.body.getReader(); var dec=new TextDecoder(); var buf="";
-        while(!stopped){
-          var r=await reader.read();
-          if(r.done) break;
-          buf+=dec.decode(r.value,{stream:true});
-          var idx;
-          while((idx=buf.indexOf("\n"))>=0){ var line=buf.slice(0,idx); buf=buf.slice(idx+1); processLine(line); }
-        }
-      }catch(e){
-        if(stopped) return;
-      }
-      if(!navigator.onLine){ setConnected("offline"); await once("online"); continue; }
-      setConnected("reconnecting");
-      await sleep(backoff); backoff=Math.min(backoff*1.7, 15000);
-    }
-  }
-  // polling fallback if streaming bodies unsupported
-  async function pollLoop(){
-    while(!stopped){
-      if(!navigator.onLine){ setConnected("offline"); await once("online"); continue; }
-      try{
-        var resp=await fetch(server+"/"+encodeURIComponent(topic)+"/json?poll=1&since="+encodeURIComponent(cursor),{cache:"no-store"});
-        if(!resp.ok) throw new Error("poll "+resp.status);
-        var txt=await resp.text(); setConnected("live"); backoff=1000;
-        txt.split("\n").forEach(processLine);
-      }catch(e){ setConnected("reconnecting"); }
-      await sleep(1500);
-    }
-  }
-  function supportsStreaming(){
-    try{ return typeof ReadableStream!=="undefined" && typeof TextDecoder!=="undefined" && !!(new Response(new Blob())).body; }catch(e){ return false; }
-  }
-  function sleep(ms){ return new Promise(function(r){ setTimeout(r,ms); }); }
-  function once(ev){ return new Promise(function(r){ window.addEventListener(ev, function h(){ window.removeEventListener(ev,h); r(); }); }); }
-
-  window.addEventListener("online", function(){ backoff=1000; });
-  window.addEventListener("offline", function(){ setConnected("offline"); });
 
   // ---------- sending ----------
-  var TE = (typeof TextEncoder!=="undefined") ? new TextEncoder() : null;
-  function byteLen(s){ return TE ? TE.encode(s).length : unescape(encodeURIComponent(s)).length; }
-  // Byte-aware chunking that mirrors bridge.py: measure each code point as it
-  // serializes on the wire (JSON escapes non-ASCII to \uXXXX), keep each
-  // envelope < ~3KB so ntfy never rejects/attaches an oversized body.
-  function makeEnvelopes(text){
-    var mid="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-    var skeleton={v:1,cid:CID,role:"user",type:"msg",mid:mid,seq:0,last:true,text:"",ts:Date.now()};
-    var overhead=byteLen(JSON.stringify(skeleton))+8;
-    var budget=Math.max(200, 3000-overhead);
-    var parts=[], cur="", curB=0;
-    for(var ch of text){
-      var b=byteLen(JSON.stringify(ch))-2;
-      if(curB+b>budget && cur){ parts.push(cur); cur=""; curB=0; }
-      cur+=ch; curB+=b;
-    }
-    parts.push(cur);
-    var envs=parts.map(function(p,i){ return {v:1,cid:CID,role:"user",type:"msg",mid:mid,seq:i,last:i===parts.length-1,text:p,ts:Date.now()}; });
-    return {mid:mid, envs:envs};
-  }
-  async function publish(env){
-    var resp=await fetch(server+"/"+encodeURIComponent(topic), {method:"POST", body:JSON.stringify(env), headers:{"Content-Type":"application/json","Title":"aapp"}});
-    if(!resp || !resp.ok) throw new Error("publish failed "+(resp&&resp.status));
-    return resp;
-  }
+  // The client owns byte-aware chunking + publishing (AappClient.sendText,
+  // mirroring bridge.py). We render the message optimistically first, then hand
+  // the text to the client; its own echoes are suppressed by cid, so the
+  // optimistic bubble is never doubled.
   async function sendMessage(){
-    var text=inputEl.value.trim(); if(!text || !topic) return;
-    var built=makeEnvelopes(text);
-    var m={mid:built.mid, role:"user", type:"msg", text:text, ts:Date.now(), done:true, mine:true, _parts:{0:text}};
+    var text=inputEl.value.trim(); if(!text || !topic || !client) return;
+    var mid="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+    var m={mid:mid, role:"user", type:"msg", text:text, ts:Date.now(), done:true, mine:true};
     byId[m.mid]=m; messages.push(m);
-    // mark every part id as already-seen so ntfy echoes are ignored (the cid
-    // check also guards this, but be explicit)
-    seenParts[m.mid]=new Set(built.envs.map(function(_,i){return i;}));
     upsertRow(m); save();
     // If no listener is running, don't show a misleading "…" — tell the user the
     // message is queued and how to bring the listener up. Otherwise show the
     // instant thinking affordance (the agent's ack/reply take over from here).
-    if(agentState()==="offline"){
+    if(client.agentState()==="offline"){
       if(!warnedOffline){ warnedOffline=true;
         addSystem("⚠︎ No agent is listening right now — your message is queued and will arrive once the listener runs. Start it in your Claude Code session (run bridge.py wait), or ask the agent to resume.");
       }
@@ -790,7 +1438,7 @@
     }
     inputEl.value=""; autoGrow(); sendEl.disabled=true;
     try{
-      for(var i=0;i<built.envs.length;i++){ await publish(built.envs[i]); }
+      await client.sendText(text, {mid:mid});
     }catch(e){
       var b=listEl.querySelector('.row[data-mid="'+cssEsc(m.mid)+'"] .bubble');
       if(b) b.classList.add("failed");
@@ -825,30 +1473,22 @@
       img.src=URL.createObjectURL(file);
     });
   }
-  async function uploadToNtfy(blob, name, mime){
-    var resp=await fetch(server+"/"+encodeURIComponent(topic), {method:"PUT", body:blob,
-      headers:{"Filename":name||"file","Content-Type":mime||"application/octet-stream"}});
-    if(!resp || !resp.ok) throw new Error("upload failed "+(resp&&resp.status));
-    var j=await resp.json();
-    if(!j.attachment || !j.attachment.url) throw new Error("no attachment url");
-    return j.attachment;   // {url,name,type,size}
-  }
   async function handleFile(file){
-    if(!file || !topic) return;
+    if(!file || !topic || !client) return;
     var isImg=/^image\//.test(file.type||"");
     var mid="a"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     var m={mid:mid, role:"user", type:"attach", mime:file.type||"application/octet-stream",
            url:URL.createObjectURL(file), name:file.name, size:file.size, mine:true,
            ts:Date.now(), done:true, uploading:true};
-    byId[mid]=m; messages.push(m); seenParts[mid]=new Set([0]); upsertRow(m); save();
+    byId[mid]=m; messages.push(m); upsertRow(m); save();
     setTyping(true);   // instant "thinking" affordance (see sendMessage)
     try{
       var blob=file, w=0, h=0;
       if(isImg){ var d=await downscaleImage(file, 1600, 0.85); blob=d.blob; w=d.w; h=d.h; m.mime="image/jpeg"; }
-      var att=await uploadToNtfy(blob, file.name, blob.type||file.type);
-      m.url=att.url; if(att.size!=null) m.size=att.size; m.uploading=false; upsertRow(m); save();
-      await publish({v:1,cid:CID,role:"user",type:"attach",mid:mid,seq:0,last:true,
-        url:att.url, name:att.name||file.name, mime:att.type||m.mime, size:m.size, w:w, h:h, ts:Date.now()});
+      // The client uploads to the relay and publishes the attach envelope; its
+      // own echo is cid-suppressed, so we just update the optimistic bubble.
+      var env=await client.sendAttachment(blob, {mid:mid, name:file.name, mime:blob.type||file.type||m.mime, w:w, h:h});
+      m.url=env.url; if(env.size!=null) m.size=env.size; m.uploading=false; upsertRow(m); save();
     }catch(e){
       m.uploading=false; m.failed=true; upsertRow(m);
       addSystem("⚠︎ Upload failed — check your connection and try again.");
@@ -999,7 +1639,23 @@
   applyActivityPref();
   renderAll();
   autoGrow();
-  (supportsStreaming()?streamLoop:pollLoop)();
+
+  // Build the protocol client (resuming from the persisted cursor) and wire its
+  // events into the UI, then connect. The client handles transport, de-dupe,
+  // reassembly, and presence; these handlers just render.
+  client = new AappClient({server:server, topic:topic, name:name, cursor:cursor});
+  client.on("connection", function(s){ setConnected(s.state); });
+  client.on("presence",   function(){ renderStatus(); });
+  client.on("msg",        onMsg);
+  client.on("system",     onSystem);
+  client.on("attach",     addAttach);
+  client.on("activity",   addActivity);
+  client.on("typing",     function(t){ if(t.state==="on") setTyping(true); else setTyping(false); });
+  client.on("status",     function(s){ showStatus(s.text); });
+  client.on("title",      function(t){ setAppName(t.text); });
+  client.on("icon",       function(i){ setAppIcon({emoji:i.emoji, url:i.url}); });
+  client.on("reload",     function(r){ handleReloadSignal(r); });
+  client.start();
 
   // Ask the agent to replay durable history so a freshly-opened client (empty
   // localStorage, or joining long after messages scrolled out of the relay's
@@ -1007,11 +1663,7 @@
   // log tagged replay:true; we de-dupe by mid, so this is harmless if we
   // already have everything. Fire twice in case the first races the agent's
   // responder coming online (the agent serves each client id at most once).
-  function requestSync(){
-    try{ publish({v:1,cid:CID,role:"user",type:"sync",
-      mid:"sync-"+Date.now().toString(36)+Math.random().toString(36).slice(2,5),
-      seq:0,last:true,ts:Date.now()}); }catch(e){}
-  }
+  function requestSync(){ try{ client.requestSync(); }catch(e){} }
   setTimeout(requestSync, 900);
   setTimeout(requestSync, 5000);
 

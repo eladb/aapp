@@ -83,8 +83,15 @@ c.start();
 await c.sendText("hello from my own client");
 ```
 
-It speaks the exact same wire protocol as `app.html` and `bridge.py`, so every
-client on a topic interoperates. Full API in
+The phone app itself is built on this client: `app.html` carries a **verbatim
+inline copy** of `aapp-client.js` (so it stays one self-contained file that works
+from any raw/static host) and its script is just the UI wired to the client's
+events. Edit the library, then run
+`scripts/sync-client.py --write` to refresh the inlined copy; CI
+(`scripts/sync-client.py --check`) fails the deploy if the two ever drift.
+
+It speaks the exact same wire protocol as `bridge.py`, so every client on a
+topic interoperates. Full API in
 [`reference/client.md`](.claude/skills/aapp/reference/client.md).
 
 ## Layout
@@ -92,10 +99,11 @@ client on a topic interoperates. Full API in
 | File | Role |
 |------|------|
 | `.claude/skills/aapp/SKILL.md` | Instructions Claude follows |
-| `.claude/skills/aapp/app.html` | The phone app (single self-contained file) |
+| `.claude/skills/aapp/app.html` | The phone app (single self-contained file; built on the client) |
 | `.claude/skills/aapp/aapp-client.js` | Reusable JS protocol client (browser + Node, no deps) |
 | `.claude/skills/aapp/scripts/bridge.py` | Agent-side relay client (stdlib only) |
 | `.claude/skills/aapp/scripts/serve.py` | Optional local server for tunnel hosting |
+| `.claude/skills/aapp/scripts/sync-client.py` | Keeps app.html's inlined client copy in sync (`--write`/`--check`) |
 | `.claude/skills/aapp/reference/protocol.md` | Wire protocol (v1) |
 | `.claude/skills/aapp/reference/client.md` | `aapp-client.js` API + examples |
 | `.claude/skills/aapp/reference/hosting.md` | Every hosting option |

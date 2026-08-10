@@ -15,6 +15,8 @@ on:
                # the main run via the shared concurrency group.
     paths:
       - .claude/skills/aapp/app.html
+      - .claude/skills/aapp/aapp-client.js
+      - .claude/skills/aapp/scripts/sync-client.py
       - site/**
       - install.sh
       - .github/workflows/pages.yml
@@ -37,6 +39,11 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verify app.html inline client matches aapp-client.js
+        # app.html carries a verbatim inline copy of aapp-client.js (it must stay
+        # a single self-contained file). Fail the deploy if the two have drifted;
+        # run scripts/sync-client.py --write to regenerate.
+        run: python3 .claude/skills/aapp/scripts/sync-client.py --check
       - name: Assemble site
         run: |
           mkdir -p _site

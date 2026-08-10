@@ -253,6 +253,7 @@
     this._seenAtt = Object.create(null); // mid -> true (attach)
     this._seenAct = Object.create(null); // mid -> true (activity)
     this._msgs = Object.create(null); // mid -> {role,type,ts,parts,done}
+    this._handled = 0; // count of inbound envelopes, for periodic pruning
 
     // presence
     this._bootTs = now();
@@ -458,6 +459,7 @@
       if (this._seenNtfy[ntfyId]) return;
       this._seenNtfy[ntfyId] = true;
     }
+    if ((++this._handled & 511) === 0) this._prune(); // bound de-dupe/buffer growth
     if (!env || env.v !== PROTOCOL_VERSION) return; // unknown/forward-incompatible
     if (env.cid === this.cid) return; // ignore our own echoes
 
@@ -587,6 +589,23 @@
       replay: !!env.replay,
     });
   };
+
+  // Bound the de-dupe indexes and reassembly buffers so a long-lived session
+  // doesn't grow without limit. String keys iterate in insertion order, so
+  // dropping the first N discards the oldest — the ones the read cursor has
+  // long since passed. (The UI keeps its own rendered-message cap separately.)
+  AappClient.prototype._prune = function () {
+    trimObject(this._seenNtfy, 4000, 2000);
+    trimObject(this._seenParts, 3000, 2000);
+    trimObject(this._seenAtt, 3000, 2000);
+    trimObject(this._seenAct, 3000, 2000);
+    trimObject(this._msgs, 3000, 2000);
+  };
+  function trimObject(obj, cap, keep) {
+    var ks = Object.keys(obj);
+    if (ks.length <= cap) return;
+    for (var i = 0; i < ks.length - keep; i++) delete obj[ks[i]];
+  }
 
   // Feed a single ntfy JSON stream line (the outer `{"id","event","message"}`
   // object, as text). Exposed for tests and custom transports.
