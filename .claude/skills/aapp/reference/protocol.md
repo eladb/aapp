@@ -33,7 +33,7 @@ the relay message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "sync" | "sync-done" | "reload",
+  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "ask" | "sync" | "sync-done" | "reload",
   "replay": true,             // present on history re-broadcasts (see Durable history)
   "force": true,              // for type=reload (reload unconditionally)
   "kind": "assistant" | "tool" | "user",   // for type=activity only
@@ -47,6 +47,8 @@ the relay message body. Both sides publish and subscribe to the same topic.
   "last": true,                // true on the final part of a message
   "text": "hello",            // content for msg/system/status
   "state": "on" | "off",      // for type=typing
+  "options": ["Yes","No"],    // for type=ask (tappable answer chips)
+  "freeText": true,            // for type=ask (allow a typed answer too)
   "ts": 1735000000000          // epoch ms
 }
 ```
@@ -92,6 +94,14 @@ the relay message body. Both sides publish and subscribe to the same topic.
   or `user` (a terminal-side user turn). Rendered as a distinct muted feed,
   separate from chat bubbles, and hideable per-device. Summaries only — never
   raw tool output or file contents.
+- **`ask`** — a human-in-the-loop question the agent poses (`bridge.py ask
+  --text "Deploy to prod?" --option Yes --option No`). The app renders an
+  **approval card** with the question and tappable option chips (plus a note that
+  a typed reply also works, unless `freeText:false`). Tapping an option — or
+  typing — sends the answer back as a normal `role:"user"` `msg`, so the agent's
+  `wait` loop picks it up like any reply; the card then locks to the chosen
+  answer. Logged and replayed (tagged `replay:true`) so it survives reload, and
+  the app de-dupes it by `mid`.
 - **`sync`** — a client request (`role:"user"`) asking the agent to replay
   durable history. Sent once on app boot. The agent's `serve`/`tail` responder
   answers by re-broadcasting its log; other clients ignore it.

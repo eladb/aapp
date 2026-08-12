@@ -242,10 +242,26 @@ The transcript path is the session JSONL (in Claude Code, typically under
 - **Icon:** `bridge.py icon --emoji 🚀` (or `--url <image>`) sets the favicon,
   iOS/home-screen icon, and header avatar live. Persisted per device.
 
+### Ask for approval / offer quick replies
+
+When you need a decision, pose it as a tappable **approval card** instead of a
+plain question:
+
+```bash
+python3 .claude/skills/aapp/scripts/bridge.py ask --text "Deploy to prod?" --option "Yes" --option "No, hold"
+```
+
+The phone shows the question with the options as tappable chips; tapping one (or
+typing a reply) sends the answer straight back to your `wait` loop like any
+message. Add `--no-free-text` to require one of the options. Great for
+human-in-the-loop confirmations before a risky or irreversible step.
+
 ### Etiquette for a good mobile chat
 
 - Keep replies **short and skimmable**; the app renders Markdown (bold, lists,
-  links, fenced code blocks with a copy button).
+  links, fenced code blocks with a copy button, colored ```diff blocks, and
+  tables). The session's steps/tool-calls appear as a collapsible activity
+  trace, so you can narrate freely without cluttering the chat.
 - Use `typing on` before long work and `status --text` for progress; both feel
   responsive on a phone.
 - Treat each inbound message as an instruction to act on **in this session** —

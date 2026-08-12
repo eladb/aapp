@@ -577,6 +577,12 @@ def republish_record(state, rec):
         })
     elif t == "activity":
         env.update({"kind": rec.get("kind", "tool"), "text": rec.get("text") or ""})
+    elif t == "ask":
+        env.update({
+            "text": rec.get("text") or "",
+            "options": rec.get("options") or [],
+            "freeText": rec.get("freeText", True),
+        })
     elif t == "title":
         env["text"] = rec.get("text") or ""
     elif t == "icon":
@@ -604,7 +610,7 @@ def replay_history(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
             last_title = r
         elif rt == "icon":
             last_icon = r
-        elif rt in ("msg", "system", "attach", "activity"):
+        elif rt in ("msg", "system", "attach", "activity", "ask"):
             timeline.append(r)
     timeline = timeline[-replay_max:]
     sent = 0
@@ -1137,6 +1143,33 @@ def cmd_icon(args):
     print(json.dumps({"icon": fields}))
 
 
+def cmd_ask(args):
+    """Pose a human-in-the-loop question. The phone renders an approval card with
+    tappable option chips; the chosen (or typed) answer arrives back as a normal
+    user `msg`, so `wait` picks it up like any reply."""
+    state = require_state(args)
+    text = args.text
+    if text == "-" or text is None:
+        text = sys.stdin.read()
+    text = text.strip()
+    if not text:
+        sys.exit("provide --text")
+    options = list(args.option or [])
+    mid = "ask-" + uuid.uuid4().hex[:12]
+    free_text = not args.no_free_text
+    env = {
+        "v": PROTOCOL_VERSION, "cid": state["cid"], "role": "agent", "type": "ask",
+        "mid": mid, "seq": 0, "last": True, "ts": now_ms(),
+        "text": text, "options": options, "freeText": free_text,
+    }
+    publish_envelope(state["server"], state["topic"], env)
+    append_log(args.state, {
+        "type": "ask", "role": "agent", "mid": mid, "cid": state["cid"],
+        "text": text, "options": options, "freeText": free_text, "ts": env["ts"],
+    })
+    print(json.dumps({"ask": {"mid": mid, "options": options}}))
+
+
 def cmd_wait(args):
     state = require_state(args)
     msg = wait_for_user_message(state, args)
@@ -1260,6 +1293,12 @@ def build_parser():
     ic.add_argument("--emoji", default=None, help="an emoji to use as the icon")
     ic.add_argument("--url", default=None, help="an image URL or data: URI")
     ic.set_defaults(func=cmd_icon)
+
+    ak = sub.add_parser("ask", help="ask a human-in-the-loop question (approval card with tappable options)")
+    ak.add_argument("--text", default=None, help="the question, or '-' for stdin")
+    ak.add_argument("--option", action="append", default=[], help="a tappable answer chip (repeatable)")
+    ak.add_argument("--no-free-text", action="store_true", help="hide the free-text field; only the options are answerable")
+    ak.set_defaults(func=cmd_ask)
 
     at = sub.add_parser("attach", help="send an image or file to the app")
     at.add_argument("--file", default=None, help="local file to upload and send")

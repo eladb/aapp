@@ -31,6 +31,23 @@
     --ring:11 98% 61%; --radius:0.85rem;
     --code-bg:222 18% 13%; --code-fg:220 14% 90%;
     --safe-t:env(safe-area-inset-top); --safe-b:env(safe-area-inset-bottom);
+    /* functional accents (AI-native semantics) — used sparingly, and mostly as
+       color-mix tints off the surface so chips auto-adapt to the theme. Coral
+       (--primary) stays the brand/you color; these carry meaning:
+       blue=tool/link, green=done/positive, orange=running/warn, red=error. */
+    --surface:0 0% 100%; --a-blue:210 100% 50%; --a-green:145 70% 35%;
+    --a-orange:26 92% 49%; --a-red:358 72% 58%; --a-violet:265 100% 68%;
+    --mono:ui-monospace,"SF Mono",SFMono-Regular,"JetBrains Mono",Menlo,monospace;
+    --ease-strong:cubic-bezier(.23,1,.32,1);
+    /* diagonal hairline hatch — a woven grain the cards float over */
+    --stripe:220 10% 30%; --stripe-a:0.05;
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --surface:222 9% 16%; --a-blue:210 100% 62%; --a-green:145 55% 55%;
+      --a-orange:28 90% 60%; --a-red:358 82% 65%; --a-violet:265 100% 74%;
+      --stripe:0 0% 100%; --stripe-a:0.05;
+    }
   }
   @media (prefers-color-scheme:dark){
     :root{
@@ -49,10 +66,17 @@
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
   html{height:100%}
   body{
-    margin:0; background:hsl(var(--background)); color:hsl(var(--foreground));
+    margin:0; color:hsl(var(--foreground));
+    background-color:hsl(var(--background));
+    /* 1px hairline every 8px at 45°, ~5% — a subtle woven grain behind content */
+    background-image:repeating-linear-gradient(-45deg,
+      transparent 0, transparent 7px,
+      hsl(var(--stripe)/var(--stripe-a)) 7px, hsl(var(--stripe)/var(--stripe-a)) 8px);
+    background-attachment:fixed;
     font:15px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    letter-spacing:-0.01em;
     display:flex; flex-direction:column; overflow:hidden; overscroll-behavior-y:none;
-    -webkit-font-smoothing:antialiased;
+    -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
     /* fill the *visual* viewport so the composer pins to the bottom with no gap
        (dvh tracks iOS toolbars/keyboard; fallbacks for older engines) */
     height:100%; height:-webkit-fill-available; height:100svh; height:100dvh;
@@ -164,11 +188,24 @@
   .switch.on{background:hsl(var(--primary)); border-color:hsl(var(--primary))}
   .switch::after{content:""; position:absolute; top:2px; left:2px; width:18px; height:18px; border-radius:50%; background:hsl(var(--background)); transition:.2s; box-shadow:0 1px 2px rgba(0,0,0,.2)}
   .switch.on::after{left:20px; background:hsl(var(--primary-foreground))}
-  /* typing */
-  .typing{display:inline-flex; gap:4px; padding:11px 14px}
-  .typing i{width:6px; height:6px; border-radius:50%; background:hsl(var(--muted-foreground)); animation:blink 1.2s infinite}
-  .typing i:nth-child(2){animation-delay:.2s} .typing i:nth-child(3){animation-delay:.4s}
-  @keyframes blink{0%,60%,100%{opacity:.25; transform:translateY(0)} 30%{opacity:1; transform:translateY(-3px)}}
+  /* thinking indicator — pixel-grid loader + shimmering label + live elapsed */
+  .think{display:inline-flex; align-items:center; gap:9px; padding:10px 14px; max-width:100%}
+  .pixgrid{display:grid; grid-template-columns:repeat(3,4px); gap:1.5px; flex:0 0 auto}
+  .pixgrid i{width:4px; height:4px; border-radius:1px; background:hsl(var(--foreground)); opacity:.15; animation:pixon .65s ease-in-out infinite}
+  .pixgrid i:nth-child(1){animation-delay:0ms} .pixgrid i:nth-child(2){animation-delay:80ms}
+  .pixgrid i:nth-child(3){animation-delay:160ms} .pixgrid i:nth-child(4){animation-delay:80ms}
+  .pixgrid i:nth-child(5){animation-delay:160ms} .pixgrid i:nth-child(6){animation-delay:240ms}
+  .pixgrid i:nth-child(7){animation-delay:160ms} .pixgrid i:nth-child(8){animation-delay:240ms}
+  .pixgrid i:nth-child(9){animation-delay:320ms}
+  .think .lbl{font-weight:500; font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+    background:linear-gradient(90deg,hsl(var(--muted-foreground)) 35%,hsl(var(--foreground)) 50%,hsl(var(--muted-foreground)) 65%);
+    background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:shimmer 1.4s linear infinite}
+  .think .elapsed{font-family:var(--mono); font-size:11px; color:hsl(var(--muted-foreground)); font-variant-numeric:tabular-nums; flex:0 0 auto}
+  @keyframes pixon{0%,100%{opacity:.15} 18%,42%{opacity:1} 62%{opacity:.15}}
+  @keyframes shimmer{from{background-position:150% 0} to{background-position:-50% 0}}
+  /* streaming caret — a blinking block cursor at the tail of an in-flight reply */
+  .stream-caret{display:inline-block; width:2px; height:1.02em; vertical-align:text-bottom; margin-left:2px; border-radius:1px; background:hsl(var(--foreground)); animation:caretblink 1s step-end infinite}
+  @keyframes caretblink{0%,100%{opacity:1} 50%{opacity:0}}
   /* empty state */
   .empty{margin:16vh auto 0; text-align:center; color:hsl(var(--muted-foreground)); max-width:320px; padding:0 20px}
   .empty .big{width:56px; height:56px; border-radius:calc(var(--radius) + 2px); margin:0 auto 14px; background:hsl(var(--muted)); border:1px solid hsl(var(--border)); display:grid; place-items:center; font-size:26px; color:hsl(var(--foreground))}
@@ -222,8 +259,77 @@
   .hint{font-size:12.5px; color:hsl(var(--muted-foreground)); margin:2px 0 14px; line-height:1.55}
   .toast{position:fixed; left:50%; bottom:calc(90px + var(--safe-b)); transform:translateX(-50%) translateY(20px); background:hsl(var(--foreground)); color:hsl(var(--background)); padding:9px 16px; border-radius:999px; font-size:13px; font-weight:500; opacity:0; pointer-events:none; transition:.25s; z-index:30}
   .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
+  /* ---- tool-call chips (activity kind=tool) ---- */
+  .toolchip{align-self:flex-start; display:inline-flex; align-items:center; gap:7px; max-width:min(100%,760px); margin:1px auto 1px 0;
+    padding:4px 10px 4px 8px; border-radius:8px; background:hsl(var(--surface)); box-shadow:0 0 0 1px hsl(var(--border));
+    font-family:var(--mono); font-size:11.5px; color:hsl(var(--muted-foreground)); animation:popin .25s var(--ease-strong) both; overflow:hidden}
+  .toolchip .tv{flex:0 0 auto; font-weight:600; color:hsl(var(--a-blue)); letter-spacing:.02em}
+  .toolchip .tt{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  body.hide-activity .toolchip{display:none}
+  /* ---- collapsible thinking-trace (groups consecutive activity) ---- */
+  .trace{align-self:stretch; max-width:760px; width:100%; margin:3px auto; border-radius:12px; background:hsl(var(--surface)/0.6); box-shadow:0 0 0 1px hsl(var(--border)); overflow:hidden; animation:fadeup .3s var(--ease-strong) both}
+  .trace-h{display:flex; align-items:center; gap:8px; padding:8px 12px; cursor:pointer; user-select:none; font-size:12.5px; color:hsl(var(--muted-foreground)); -webkit-tap-highlight-color:transparent}
+  .trace-h .spark{color:hsl(var(--primary)); font-size:12px; flex:0 0 auto}
+  .trace-h .tlbl{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:500}
+  .trace-h .tn{font-family:var(--mono); font-size:11px; font-variant-numeric:tabular-nums; opacity:.8}
+  .trace-h .chev{flex:0 0 auto; transition:transform .2s var(--ease-strong); font-size:11px}
+  .trace.open .trace-h .chev{transform:rotate(180deg)}
+  .trace-b{display:none; padding:2px 12px 10px 12px; border-top:1px solid hsl(var(--border))}
+  .trace.open .trace-b{display:block}
+  .trace-b .act{margin:2px 0; padding:2px 0}
+  body.hide-activity .trace{display:none}
+  /* ---- approval / ask card (human-in-the-loop) ---- */
+  .askwrap{align-self:stretch; max-width:760px; width:100%; margin:6px auto; animation:fadeup .34s var(--ease-strong) both}
+  .askcard{border-radius:16px; background:hsl(var(--surface)); box-shadow:0 0 0 1px hsl(var(--border)),0 2px 10px hsl(20 14% 8%/0.06); overflow:hidden}
+  .askcard .q{padding:14px 16px 10px; font-weight:600; font-size:15px; letter-spacing:-.01em; line-height:1.35}
+  .askcard .qi{display:inline-flex; align-items:center; gap:7px}
+  .askcard .qi .spark{color:hsl(var(--primary))}
+  .askopts{display:flex; flex-direction:column; padding:0 10px 8px}
+  .askopt{display:flex; align-items:center; gap:11px; padding:11px 12px; border-radius:11px; border:none; background:transparent; color:hsl(var(--foreground));
+    font:inherit; font-size:14.5px; text-align:left; cursor:pointer; transition:background .15s; width:100%}
+  .askopt:hover{background:hsl(var(--muted)/0.6)}
+  .askopt:active{background:hsl(var(--muted))}
+  .askopt .ring{flex:0 0 auto; width:19px; height:19px; border-radius:50%; box-shadow:inset 0 0 0 1.6px hsl(var(--muted-foreground)/0.6); transition:.15s; display:grid; place-items:center}
+  .askopt .ring::after{content:""; width:9px; height:9px; border-radius:50%; background:hsl(var(--primary)); transform:scale(0); transition:transform .18s var(--ease-strong)}
+  .askopt.chosen .ring{box-shadow:inset 0 0 0 6px hsl(var(--primary))}
+  .askopt.chosen .ring::after{background:hsl(var(--primary-foreground)); transform:scale(.5)}
+  .askopt .ol{flex:1; min-width:0}
+  .askcard.answered{opacity:.92}
+  .askcard.answered .askopt{cursor:default; pointer-events:none}
+  .askcard.answered .askopt:not(.chosen){opacity:.45}
+  .askcard .askfoot{display:flex; align-items:center; gap:7px; padding:8px 14px 12px; font-size:11.5px; color:hsl(var(--muted-foreground)); border-top:1px solid hsl(var(--border))}
+  .askcard .askfoot .ft{flex:1; min-width:0}
+  .askcard.answered .askfoot .ft{color:hsl(var(--a-green))}
+  /* ---- diff blocks (the +/- prefix stays in the text so Copy is faithful) ---- */
+  .dl{display:block; padding:0 13px; margin:0 -13px}
+  .dl.add{background:hsl(var(--a-green)/0.18); color:hsl(var(--a-green))}
+  .dl.del{background:hsl(var(--a-red)/0.18); color:hsl(var(--a-red))}
+  /* ---- long-press message action menu ---- */
+  .actmenu{position:fixed; z-index:40; background:hsl(var(--surface)); border-radius:13px; box-shadow:0 0 0 1px hsl(var(--border)),0 10px 34px hsl(20 14% 8%/0.22);
+    padding:5px; min-width:168px; opacity:0; transform:scale(.95) translateY(4px); transform-origin:top center; transition:.14s var(--ease-strong); pointer-events:none}
+  .actmenu.show{opacity:1; transform:none; pointer-events:auto}
+  .actmenu button{display:flex; align-items:center; gap:11px; width:100%; border:none; background:transparent; color:hsl(var(--foreground)); font:inherit; font-size:14.5px; text-align:left; padding:10px 12px; border-radius:9px; cursor:pointer}
+  .actmenu button:hover{background:hsl(var(--muted)/0.6)} .actmenu button:active{background:hsl(var(--muted))}
+  .actmenu button .mi{width:18px; text-align:center; flex:0 0 auto; opacity:.75}
+  .actmenu button.danger{color:hsl(var(--destructive))}
+  .bubble.flash{animation:flash .6s ease}
+  @keyframes flash{0%,100%{box-shadow:0 1px 1px hsl(20 14% 8%/0.05)} 30%{box-shadow:0 0 0 2px hsl(var(--primary)/0.7)}}
+  /* ---- skeleton shimmer (image upload / initial sync) ---- */
+  .skel{position:relative; overflow:hidden; background:hsl(var(--muted)/0.7)}
+  .skel::after{content:""; position:absolute; inset:0; background:linear-gradient(90deg,transparent,hsl(var(--foreground)/0.06),transparent); transform:translateX(-100%); animation:sweep 1.3s infinite}
+  @keyframes sweep{to{transform:translateX(100%)}}
+  .synced-skel{max-width:760px; margin:6px auto; display:flex; flex-direction:column; gap:8px}
+  .synced-skel .sk{height:44px; border-radius:16px}
+  .synced-skel .sk.a{width:62%} .synced-skel .sk.b{width:78%; align-self:flex-end}
+  /* ---- entrance keyframes ---- */
+  @keyframes fadeup{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+  @keyframes popin{from{opacity:0; transform:scale(.95)} to{opacity:1; transform:none}}
+  ::selection{background:hsl(var(--primary)/0.22)}
+  #scroll::-webkit-scrollbar{width:7px} #scroll::-webkit-scrollbar-thumb{background:hsl(var(--muted-foreground)/0.3); border-radius:4px}
   @media (prefers-reduced-motion: reduce){
     *{animation-duration:.001ms !important; animation-iteration-count:1 !important; transition-duration:.001ms !important; scroll-behavior:auto !important}
+    .stream-caret,.pixgrid i,.think .lbl,.skel::after{animation:none !important}
+    .think .lbl{color:hsl(var(--muted-foreground))}
   }
 </style>
 </head>
@@ -531,6 +637,7 @@
     this._seenParts = Object.create(null); // mid -> Set(seq)  (msg/system)
     this._seenAtt = Object.create(null); // mid -> true (attach)
     this._seenAct = Object.create(null); // mid -> true (activity)
+    this._seenAsk = Object.create(null); // mid -> true (ask / approval card)
     this._msgs = Object.create(null); // mid -> {role,type,ts,parts,done}
     this._handled = 0; // count of inbound envelopes, for periodic pruning
 
@@ -783,6 +890,8 @@
         return;
       case "attach":
         return this._handleAttach(env, ntfyId);
+      case "ask":
+        return this._handleAsk(env, ntfyId);
       case "msg":
       case "system":
         return this._handleMsg(env, ntfyId);
@@ -871,6 +980,32 @@
     });
   };
 
+  // ask — a human-in-the-loop question the agent poses (rendered as an approval
+  // card with tappable options). De-duped by mid like activity/attach so a
+  // history replay never double-renders it.
+  AappClient.prototype._handleAsk = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenAsk[mid]) return;
+    this._seenAsk[mid] = true;
+    var opts = [];
+    if (Array.isArray(env.options)) {
+      for (var i = 0; i < env.options.length; i++) {
+        var o = env.options[i];
+        if (o == null) continue;
+        opts.push(typeof o === "string" ? { label: String(o), value: String(o) }
+          : { label: String(o.label != null ? o.label : o.value), value: String(o.value != null ? o.value : o.label) });
+      }
+    }
+    this.emit("ask", {
+      mid: mid,
+      text: env.text || "",
+      options: opts,
+      freeText: env.freeText !== false, // allow a typed answer unless explicitly disabled
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
   // Bound the de-dupe indexes and reassembly buffers so a long-lived session
   // doesn't grow without limit. String keys iterate in insertion order, so
   // dropping the first N discards the oldest — the ones the read cursor has
@@ -880,6 +1015,7 @@
     trimObject(this._seenParts, 3000, 2000);
     trimObject(this._seenAtt, 3000, 2000);
     trimObject(this._seenAct, 3000, 2000);
+    trimObject(this._seenAsk, 3000, 2000);
     trimObject(this._msgs, 3000, 2000);
   };
   function trimObject(obj, cap, keep) {
@@ -1081,6 +1217,7 @@
   var seenNtfy={};        // ntfy id -> true (dedup)
   var cursor="all";       // ntfy read cursor
   var unread=0, atBottom=true, typingActive=false, typingEl=null, statusTimer=null;
+  var curTrace=null;      // the open activity "thinking-trace" DOM group (or null)
 
   // ---------- persistence ----------
   function load(){
@@ -1135,6 +1272,20 @@
     return cells.every(function(c){ return /^:?-{1,}:?$/.test(c); });
   }
   function mdAlign(c){ var l=c.charAt(0)===":", r=c.charAt(c.length-1)===":"; return (l&&r)?"center":(r?"right":(l?"left":"")); }
+  function renderCodeBlock(lines, lang){
+    // lines are already HTML-escaped. A ```diff fence colors +/- lines (the
+    // prefix char stays in the text so the Copy button yields a real diff).
+    if(/^diff$/i.test(lang||"")){
+      var body=lines.map(function(ln){
+        var ch=ln.charAt(0), c="ctx";
+        if(ch==="+" && ln.slice(0,3)!=="+++") c="add";
+        else if(ch==="-" && ln.slice(0,3)!=="---") c="del";
+        return '<span class="dl '+c+'">'+(ln.length?ln:" ")+'</span>';
+      }).join("");
+      return '<div class="codewrap"><button class="copy">Copy</button><pre class="diff"><code>'+body+'</code></pre></div>';
+    }
+    return '<div class="codewrap"><button class="copy">Copy</button><pre><code>'+lines.join("\n")+'</code></pre></div>';
+  }
   function renderMarkdown(text){
     var out=[]; var lines=esc(text).split(/\n/);
     var i=0, inCode=false, code=[], codeLang="", listType=null, list=[];
@@ -1144,7 +1295,7 @@
       var fence=ln.match(/^\s*```(.*)$/);
       if(fence){
         if(!inCode){ closeList(); inCode=true; codeLang=fence[1].trim(); code=[]; }
-        else{ inCode=false; out.push('<div class="codewrap"><button class="copy">Copy</button><pre><code>'+code.join("\n")+'</code></pre></div>'); }
+        else{ inCode=false; out.push(renderCodeBlock(code, codeLang)); }
         i++; continue;
       }
       if(inCode){ code.push(ln); i++; continue; }
@@ -1171,7 +1322,7 @@
       while(i<lines.length && lines[i].trim()!=="" && !/^\s*```/.test(lines[i]) && !/^\s*(#{1,3})\s/.test(lines[i]) && !/^\s*[-*]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i])){ para.push(lines[i]); i++; }
       out.push("<p>"+para.map(renderInline).join("<br>")+"</p>");
     }
-    if(inCode) out.push('<div class="codewrap"><button class="copy">Copy</button><pre><code>'+code.join("\n")+'</code></pre></div>');
+    if(inCode) out.push(renderCodeBlock(code, codeLang));
     closeList();
     return out.join("");
   }
@@ -1201,7 +1352,9 @@
     else if(m.role==="user"){ inner = "<p>"+esc(m.text).replace(/\n/g,"<br>")+"</p>"; }
     else { inner = renderMarkdown(m.text||""); }
     var status = (m.type==="attach" && m.uploading) ? "uploading… " : "";
-    return inner + '<div class="meta">'+status+fmtTime(m.ts)+'</div>';
+    // blinking caret while an agent reply is still streaming (parts not `last`)
+    var caret = (m.role==="agent" && m.type==="msg" && m.done===false && (m.text||"").length) ? '<span class="stream-caret"></span>' : "";
+    return inner + caret + '<div class="meta">'+status+fmtTime(m.ts)+'</div>';
   }
   function bubbleClass(m){ return "bubble"+((m.type==="attach" && /^image\//.test(m.mime||""))?" media":"")+(m.failed?" failed":""); }
   function makeRow(m){
@@ -1225,21 +1378,54 @@
     if(m.kind==="assistant"){ ax.innerHTML=renderMarkdown(m.text||""); }
     else { ax.textContent=m.text; }
   }
-  function makeActivity(m){
+  function activityInner(m){
+    // tool calls render as a compact mono chip; the model's own narration and
+    // terminal-user turns render as a quiet muted line.
+    if((m.kind||"tool")==="tool"){
+      var c=document.createElement("div"); c.className="toolchip"; c.dataset.mid=m.mid;
+      var txt=(m.text||"").trim();
+      var sp=txt.search(/[\s:]/);
+      var verb = sp>0 ? txt.slice(0,sp) : txt;
+      var rest = sp>0 ? txt.slice(sp).replace(/^[\s:]+/,"") : "";
+      var v=document.createElement("span"); v.className="tv"; v.textContent=verb||"tool"; c.appendChild(v);
+      if(rest){ var t=document.createElement("span"); t.className="tt"; t.textContent=rest; c.appendChild(t); }
+      return c;
+    }
     var d=document.createElement("div"); d.className="act "+(m.kind||"tool"); d.dataset.mid=m.mid;
     var ai=document.createElement("div"); ai.className="ai"; ai.textContent = m.kind==="assistant" ? "◈" : "";
     var ax=document.createElement("div"); ax.className="ax"; setActivityText(ax, m);
     d.appendChild(ai); d.appendChild(ax); return d;
   }
+  // Consecutive activity items collapse into one "Working · N steps" trace that
+  // stays expanded while live and auto-collapses when the reply lands.
+  function newTrace(){
+    var t=document.createElement("div"); t.className="trace open";
+    t.innerHTML='<div class="trace-h"><span class="spark">✦</span><span class="tlbl">Working</span><span class="tn">0 steps</span><span class="chev">⌄</span></div><div class="trace-b"></div>';
+    return t;
+  }
+  function traceAppend(trace, m){
+    var body=trace.querySelector(".trace-b");
+    body.appendChild(activityInner(m));
+    var n=body.children.length;
+    trace.querySelector(".tn").textContent=n+(n===1?" step":" steps");
+  }
+  function appendActivityGrouped(m){
+    if(!curTrace || !curTrace.parentNode){ curTrace=newTrace(); listEl.appendChild(curTrace); }
+    traceAppend(curTrace, m);
+  }
+  function closeTrace(){ if(curTrace){ curTrace.classList.remove("open"); curTrace=null; } }
   function makeItem(m){
     if(m.type==="system") return makeSys(m);
-    if(m.type==="activity") return makeActivity(m);
+    if(m.type==="ask") return makeAsk(m);
+    if(m.type==="activity") return activityInner(m);  // fallback (normally grouped)
     return makeRow(m);
   }
   function renderAll(){
-    clearView();
+    clearView(); curTrace=null;
     var lastDay=null;
     messages.forEach(function(m){
+      if(m.type==="activity"){ appendActivityGrouped(m); return; }
+      closeTrace();
       if(isChat(m)){ var dk=dayKey(m.ts); if(dk!==lastDay){ lastDay=dk; listEl.appendChild(daySep(m.ts)); } }
       listEl.appendChild(makeItem(m));
     });
@@ -1248,11 +1434,17 @@
   }
   function upsertRow(m){
     emptyEl.style.display="none";
+    if(m.type==="activity"){
+      var ea=listEl.querySelector('[data-mid="'+cssEsc(m.mid)+'"]');
+      if(ea){ if((m.kind||"tool")!=="tool"){ var ax0=ea.querySelector(".ax"); if(ax0) setActivityText(ax0, m); } }
+      else { appendActivityGrouped(m); }
+      if(atBottom) scrollToBottom(); return;
+    }
+    closeTrace();   // any chat/system/ask message ends the working trace
     var existing=listEl.querySelector('[data-mid="'+cssEsc(m.mid)+'"]');
     if(existing){
       if(isChat(m)){ var bub=existing.querySelector(".bubble"); if(bub){ bub.className=bubbleClass(m); bub.innerHTML=bubbleHTML(m); } }
       else if(m.type==="system"){ existing.textContent=m.text; }
-      else if(m.type==="activity"){ var ax=existing.querySelector(".ax"); if(ax) setActivityText(ax, m); }
     } else {
       if(isChat(m)){
         var last=null;
@@ -1261,7 +1453,7 @@
       }
       listEl.appendChild(makeItem(m));
     }
-    if(atBottom) scrollToBottom(); else if(isChat(m)) bumpUnread();
+    if(atBottom) scrollToBottom(); else if(isChat(m)||m.type==="ask") bumpUnread();
   }
   function cssEsc(s){ return (window.CSS&&CSS.escape)?CSS.escape(s):s.replace(/[^\w-]/g,"_"); }
   function pruneMemory(){
@@ -1288,20 +1480,31 @@
   // reply). Re-armed on every agent signal so it survives long work, but if the
   // session goes silent (e.g. it died) the indicator clears itself rather than
   // spinning forever.
-  var thinkTimer=null;
+  var thinkTimer=null, thinkStart=0, thinkTick=null, thinkLabelEl=null, thinkElapsedEl=null;
   function armThink(){ if(thinkTimer) clearTimeout(thinkTimer); thinkTimer=setTimeout(function(){ setTyping(false); }, 150000); }
   function keepThinking(){ if(typingActive) armThink(); }
+  function fmtElapsed(ms){ var s=ms/1000; return (s<10?s.toFixed(1):Math.round(s))+"s"; }
+  function setThinkLabel(t){ if(thinkLabelEl){ thinkLabelEl.textContent=t||"Thinking"; } }
   function setTyping(on){
     typingActive=on;
     if(on){
       armThink();
       if(typingEl) return;
+      thinkStart=Date.now();
       typingEl=document.createElement("div"); typingEl.className="row them";
-      typingEl.innerHTML='<div class="bubble" style="padding:0"><div class="typing"><i></i><i></i><i></i></div></div>';
+      var cells=""; for(var i=0;i<9;i++) cells+="<i></i>";
+      typingEl.innerHTML='<div class="bubble" style="padding:0"><div class="think">'+
+        '<div class="pixgrid" aria-hidden="true">'+cells+'</div>'+
+        '<span class="lbl">Thinking</span><span class="elapsed">0.0s</span></div></div>';
+      thinkLabelEl=typingEl.querySelector(".lbl"); thinkElapsedEl=typingEl.querySelector(".elapsed");
       listEl.appendChild(typingEl); if(atBottom) scrollToBottom();
+      if(thinkTick) clearInterval(thinkTick);
+      thinkTick=setInterval(function(){ if(thinkElapsedEl) thinkElapsedEl.textContent=fmtElapsed(Date.now()-thinkStart); }, 100);
     } else {
       if(thinkTimer){ clearTimeout(thinkTimer); thinkTimer=null; }
+      if(thinkTick){ clearInterval(thinkTick); thinkTick=null; }
       if(typingEl){ typingEl.remove(); typingEl=null; }
+      thinkLabelEl=thinkElapsedEl=null;
     }
   }
   function moveTypingToEnd(){ if(typingEl){ listEl.appendChild(typingEl); } }
@@ -1332,13 +1535,19 @@
   });
   toBottomEl.addEventListener("click", function(){ scrollToBottom(); });
 
-  // ---------- copy code ----------
+  // ---------- list interactions: copy code · toggle trace · answer ask ----------
   listEl.addEventListener("click", function(e){
-    var btn=e.target.closest && e.target.closest(".copy");
-    if(!btn) return;
-    var code=btn.parentElement.querySelector("code");
-    var txt=code?code.textContent:"";
-    copyText(txt); btn.textContent="Copied!"; setTimeout(function(){ btn.textContent="Copy"; },1200);
+    var t=e.target;
+    var btn=t.closest && t.closest(".copy");
+    if(btn){
+      var code=btn.parentElement.querySelector("code");
+      copyText(code?code.textContent:""); btn.textContent="Copied!"; setTimeout(function(){ btn.textContent="Copy"; },1200);
+      return;
+    }
+    var th=t.closest && t.closest(".trace-h");
+    if(th){ th.parentNode.classList.toggle("open"); return; }
+    var opt=t.closest && t.closest(".askopt");
+    if(opt){ onAskOption(opt); return; }
   });
 
   // ---------- inbound (driven by AappClient events) ----------
@@ -1348,7 +1557,7 @@
   // `mid` (byId / seenAct) so a history replay after reload — where the client
   // starts fresh and re-emits messages we already persisted — is idempotent.
   function onMsg(p){
-    var m=byId[p.mid];
+    var m=byId[p.mid]; var isNew=!m;
     if(!m){
       // Link-as-identity: a user message from any device is "you", rendered the
       // same everywhere (see makeRow).
@@ -1379,6 +1588,58 @@
     upsertRow(m); save(); pruneMemory();
     keepThinking();   // work is happening -> keep the thinking indicator alive
   }
+  // Haptics — only after a real user gesture. Browsers block (and warn about)
+  // navigator.vibrate before the first activation, so we gate on it; this also
+  // matches when a vibration would actually be permitted.
+  var userGestured=false;
+  try{ ["pointerdown","touchstart","keydown"].forEach(function(ev){
+    document.addEventListener(ev, function(){ userGestured=true; }, {passive:true}); }); }catch(e){}
+  function buzz(ms){ if(!userGestured) return; try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
+
+  // ---------- ask / approval cards (human-in-the-loop) ----------
+  function makeAsk(m){
+    var w=document.createElement("div"); w.className="askwrap"; w.dataset.mid=m.mid;
+    var card=document.createElement("div"); card.className="askcard"+(m.answered?" answered":"");
+    var q=document.createElement("div"); q.className="q";
+    var qi=document.createElement("span"); qi.className="qi";
+    qi.innerHTML='<span class="spark">✦</span>'; var qt=document.createElement("span"); qt.textContent=m.text||""; qi.appendChild(qt);
+    q.appendChild(qi); card.appendChild(q);
+    var opts=document.createElement("div"); opts.className="askopts";
+    (m.options||[]).forEach(function(o){
+      var b=document.createElement("button"); b.type="button";
+      b.className="askopt"+(m.answered && m.chosen===o.value?" chosen":"");
+      b.dataset.mid=m.mid; b.dataset.value=o.value;
+      var ring=document.createElement("span"); ring.className="ring";
+      var ol=document.createElement("span"); ol.className="ol"; ol.textContent=o.label;
+      b.appendChild(ring); b.appendChild(ol); opts.appendChild(b);
+    });
+    card.appendChild(opts);
+    var foot=document.createElement("div"); foot.className="askfoot";
+    var ft=document.createElement("span"); ft.className="ft";
+    ft.textContent = m.answered ? ("✓ Answered — "+(m.chosen||"")) :
+      ((m.options&&m.options.length) ? (m.freeText?"Tap an option, or reply below":"Tap an option")
+                                     : "Reply below to answer");
+    foot.appendChild(ft); card.appendChild(foot);
+    w.appendChild(card); return w;
+  }
+  function onAsk(p){
+    if(byId[p.mid]) return;
+    var m={mid:p.mid, role:"agent", type:"ask", text:p.text||"", options:p.options||[],
+           freeText:p.freeText!==false, answered:false, chosen:null, ts:p.ts, done:true};
+    byId[p.mid]=m; messages.push(m);
+    setTyping(false);            // the agent is now waiting on us
+    upsertRow(m); save(); pruneMemory();
+    if(!p.replay) buzz(14);
+  }
+  function onAskOption(optEl){
+    var mid=optEl.dataset.mid, val=optEl.dataset.value;
+    var m=byId[mid]; if(!m || m.answered) return;
+    m.answered=true; m.chosen=val;
+    var w=listEl.querySelector('.askwrap[data-mid="'+cssEsc(mid)+'"]');
+    if(w && w.parentNode){ w.parentNode.replaceChild(makeAsk(m), w); }
+    save(); buzz(8);
+    submitText(val);             // send the choice as a normal user message
+  }
   function setAppName(nm){
     nm=(nm||"").trim(); if(!nm || nm===name) return;
     name=nm;
@@ -1391,6 +1652,7 @@
   function showStatus(text){
     if(!text) return;
     keepThinking();   // a progress line means work is happening
+    if(typingActive) setThinkLabel(text);   // surface it inside the thinking pill
     statusEl.textContent=text; dotEl.className="dot live";
     if(statusTimer) clearTimeout(statusTimer);
     statusTimer=setTimeout(function(){ setConnected(connState); },4000);
@@ -1422,15 +1684,15 @@
   // mirroring bridge.py). We render the message optimistically first, then hand
   // the text to the client; its own echoes are suppressed by cid, so the
   // optimistic bubble is never doubled.
-  async function sendMessage(){
-    var text=inputEl.value.trim(); if(!text || !topic || !client) return;
+  // Shared submit path: renders the optimistic user bubble, shows the thinking
+  // affordance (or the offline warning), and hands the text to the client. Used
+  // by the composer, ask-card options, and quote-reply.
+  async function submitText(text){
+    text=(text||"").trim(); if(!text || !topic || !client) return;
     var mid="u"+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
     var m={mid:mid, role:"user", type:"msg", text:text, ts:Date.now(), done:true, mine:true};
     byId[m.mid]=m; messages.push(m);
-    upsertRow(m); save();
-    // If no listener is running, don't show a misleading "…" — tell the user the
-    // message is queued and how to bring the listener up. Otherwise show the
-    // instant thinking affordance (the agent's ack/reply take over from here).
+    upsertRow(m); save(); buzz(10);
     if(client.agentState()==="offline"){
       if(!warnedOffline){ warnedOffline=true;
         addSystem("⚠︎ No agent is listening right now — your message is queued and will arrive once the listener runs. Start it in your Claude Code session (run bridge.py wait), or ask the agent to resume.");
@@ -1438,7 +1700,6 @@
     } else {
       setTyping(true);
     }
-    inputEl.value=""; autoGrow(); sendEl.disabled=true;
     try{
       await client.sendText(text, {mid:mid});
     }catch(e){
@@ -1446,6 +1707,11 @@
       if(b) b.classList.add("failed");
       addSystem("⚠︎ Message failed to send — check your connection and try again.");
     }
+  }
+  async function sendMessage(){
+    var text=inputEl.value.trim(); if(!text) return;
+    inputEl.value=""; autoGrow(); sendEl.disabled=true;
+    await submitText(text);
     inputEl.focus();
   }
   sendEl.addEventListener("click", sendMessage);
@@ -1532,6 +1798,57 @@
     messages=[]; byId={}; seenParts={}; seenAct={}; seenNtfy={}; try{ localStorage.removeItem(STORE); }catch(e){}
     renderAll(); closeSheet(); toast("History cleared");
   });
+
+  // ---------- long-press message actions (copy · quote · select) ----------
+  (function(){
+    var menu=document.createElement("div"); menu.className="actmenu"; menu.setAttribute("role","menu");
+    menu.innerHTML='<button data-a="copy"><span class="mi">⧉</span>Copy</button>'+
+                   '<button data-a="quote"><span class="mi">❝</span>Quote reply</button>'+
+                   '<button data-a="select"><span class="mi">⌲</span>Select text</button>';
+    document.body.appendChild(menu);
+    var curMid=null, lpTimer=null, startX=0, startY=0, moved=false;
+    function bubbleFrom(t){ return t && t.closest ? t.closest(".row .bubble") : null; }
+    function openMenu(bubble, x, y){
+      var row=bubble.closest(".row"); curMid=row?row.dataset.mid:null; if(!curMid) return;
+      bubble.classList.add("flash"); setTimeout(function(){ bubble.classList.remove("flash"); },600);
+      menu.style.visibility="hidden"; menu.classList.add("show");
+      var mw=menu.offsetWidth||180, mh=menu.offsetHeight||150;
+      var px=Math.max(8, Math.min(x-mw/2, window.innerWidth-mw-8));
+      var py=y+10; if(py+mh>window.innerHeight-8) py=Math.max(8, y-mh-10);
+      menu.style.left=px+"px"; menu.style.top=py+"px"; menu.style.visibility="";
+      buzz(12);
+    }
+    function closeMenu(){ menu.classList.remove("show"); curMid=null; }
+    listEl.addEventListener("touchstart", function(e){
+      var b=bubbleFrom(e.target); if(!b) return;
+      moved=false; var t=e.touches[0]; startX=t.clientX; startY=t.clientY;
+      lpTimer=setTimeout(function(){ if(!moved) openMenu(b, startX, startY); }, 480);
+    }, {passive:true});
+    listEl.addEventListener("touchmove", function(e){
+      if(!lpTimer) return; var t=e.touches[0];
+      if(Math.abs(t.clientX-startX)>10 || Math.abs(t.clientY-startY)>10){ moved=true; clearTimeout(lpTimer); lpTimer=null; }
+    }, {passive:true});
+    listEl.addEventListener("touchend", function(){ if(lpTimer){ clearTimeout(lpTimer); lpTimer=null; } }, {passive:true});
+    listEl.addEventListener("contextmenu", function(e){ var b=bubbleFrom(e.target); if(!b) return; e.preventDefault(); openMenu(b, e.clientX, e.clientY); });
+    document.addEventListener("click", function(e){ if(menu.classList.contains("show") && !menu.contains(e.target)) closeMenu(); }, true);
+    scrollEl.addEventListener("scroll", closeMenu, {passive:true});
+    menu.addEventListener("click", function(e){
+      var btn=e.target.closest && e.target.closest("button"); if(!btn || !curMid) return;
+      var m=byId[curMid], a=btn.dataset.a; var mid=curMid; closeMenu();
+      if(!m) return;
+      var text = m.type==="attach" ? (m.text||m.name||m.url||"") : (m.text||"");
+      if(a==="copy"){ copyText(text); toast("Copied"); }
+      else if(a==="quote"){
+        var q=text.split("\n").map(function(l){ return "> "+l; }).join("\n");
+        inputEl.value = (inputEl.value?inputEl.value+"\n":"") + q + "\n\n";
+        autoGrow(); sendEl.disabled=inputEl.value.trim()===""; inputEl.focus();
+      }
+      else if(a==="select"){
+        var bub=listEl.querySelector('.row[data-mid="'+cssEsc(mid)+'"] .bubble');
+        if(bub){ try{ var r=document.createRange(); r.selectNodeContents(bub); var s=window.getSelection(); s.removeAllRanges(); s.addRange(r); }catch(_e){} }
+      }
+    });
+  })();
 
   function copyText(t){
     if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(t).catch(fallbackCopy.bind(null,t)); }
@@ -1652,6 +1969,7 @@
   client.on("system",     onSystem);
   client.on("attach",     addAttach);
   client.on("activity",   addActivity);
+  client.on("ask",        onAsk);
   client.on("typing",     function(t){ if(t.state==="on") setTyping(true); else setTyping(false); });
   client.on("status",     function(s){ showStatus(s.text); });
   client.on("title",      function(t){ setAppName(t.text); });

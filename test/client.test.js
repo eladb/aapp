@@ -83,7 +83,14 @@ cli.feedLine(relayLine("n10", { v: 1, cid: "agent", role: "agent", type: "attach
 ok("attach emitted", attaches.length === 1 && attaches[0].mime === "image/jpeg");
 cli.feedLine(relayLine("n11", { v: 1, cid: "agent", role: "agent", type: "title", text: "Renamed" }));
 ok("title emitted + name updated", titles.length === 1 && cli.name === "Renamed");
-ok("cursor tracks last id", cli.cursor === "n11");
+// ---- ask (human-in-the-loop approval card) ----
+let asks = [];
+cli.on("ask", (a) => asks.push(a));
+cli.feedLine(relayLine("n12", { v: 1, cid: "agent", role: "agent", type: "ask", mid: "ask1", text: "Deploy to prod?", options: ["Yes", "No"], freeText: false }));
+cli.feedLine(relayLine("n13", { v: 1, cid: "agent", role: "agent", type: "ask", mid: "ask1", text: "Deploy to prod?", options: ["Yes", "No"] }));
+ok("ask emitted once, options normalized", asks.length === 1 && asks[0].options.length === 2 && asks[0].options[0].label === "Yes" && asks[0].options[0].value === "Yes");
+ok("ask freeText:false respected", asks[0].freeText === false);
+ok("cursor tracks last id", cli.cursor === "n13");
 
 // ---- presence ----
 console.log("presence");

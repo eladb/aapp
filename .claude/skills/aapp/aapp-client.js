@@ -252,6 +252,7 @@
     this._seenParts = Object.create(null); // mid -> Set(seq)  (msg/system)
     this._seenAtt = Object.create(null); // mid -> true (attach)
     this._seenAct = Object.create(null); // mid -> true (activity)
+    this._seenAsk = Object.create(null); // mid -> true (ask / approval card)
     this._msgs = Object.create(null); // mid -> {role,type,ts,parts,done}
     this._handled = 0; // count of inbound envelopes, for periodic pruning
 
@@ -504,6 +505,8 @@
         return;
       case "attach":
         return this._handleAttach(env, ntfyId);
+      case "ask":
+        return this._handleAsk(env, ntfyId);
       case "msg":
       case "system":
         return this._handleMsg(env, ntfyId);
@@ -592,6 +595,32 @@
     });
   };
 
+  // ask — a human-in-the-loop question the agent poses (rendered as an approval
+  // card with tappable options). De-duped by mid like activity/attach so a
+  // history replay never double-renders it.
+  AappClient.prototype._handleAsk = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenAsk[mid]) return;
+    this._seenAsk[mid] = true;
+    var opts = [];
+    if (Array.isArray(env.options)) {
+      for (var i = 0; i < env.options.length; i++) {
+        var o = env.options[i];
+        if (o == null) continue;
+        opts.push(typeof o === "string" ? { label: String(o), value: String(o) }
+          : { label: String(o.label != null ? o.label : o.value), value: String(o.value != null ? o.value : o.label) });
+      }
+    }
+    this.emit("ask", {
+      mid: mid,
+      text: env.text || "",
+      options: opts,
+      freeText: env.freeText !== false, // allow a typed answer unless explicitly disabled
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
   // Bound the de-dupe indexes and reassembly buffers so a long-lived session
   // doesn't grow without limit. String keys iterate in insertion order, so
   // dropping the first N discards the oldest — the ones the read cursor has
@@ -601,6 +630,7 @@
     trimObject(this._seenParts, 3000, 2000);
     trimObject(this._seenAtt, 3000, 2000);
     trimObject(this._seenAct, 3000, 2000);
+    trimObject(this._seenAsk, 3000, 2000);
     trimObject(this._msgs, 3000, 2000);
   };
   function trimObject(obj, cap, keep) {
