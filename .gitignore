@@ -8,3 +8,4 @@ site/index.candidate*.html
 # React build (web/)
 web/node_modules/
 web/dist/
+web/src/aapp-client.cjs

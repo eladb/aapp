@@ -16,7 +16,7 @@ const http = require("http");
 const fs = require("fs");
 const path = require("path");
 
-const APP_PATH = path.join(__dirname, "..", ".claude", "skills", "aapp", "app.html");
+const APP_PATH = process.env.MINI_APP || path.join(__dirname, "..", ".claude", "skills", "aapp", "app.html");
 const APP = fs.readFileSync(APP_PATH);
 const PORT = Number(process.env.MINI_PORT || 8779);
 
