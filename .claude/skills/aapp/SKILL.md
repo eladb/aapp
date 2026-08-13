@@ -141,16 +141,19 @@ message, do the work, reply, repeat — so it doesn't burn turns while idle:
 
 1. **Wait for a message** in the background so the turn ends until one arrives:
    ```bash
-   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 1800
+   python3 .claude/skills/aapp/scripts/bridge.py wait --timeout 0
    ```
    Run this with your background-execution tool. It prints the message as JSON to
-   **stdout** (which your background tool captures) when one arrives. On an idle
-   timeout it exits **0** with `{"type":"timeout"}` (a normal, quiet re-arm — not
-   a failure); just start another `wait`. Use a **long** timeout (default 1800s):
-   messages wake it instantly
-   via streaming, so a big value just avoids idle returns; the read cursor is
-   persisted, so nothing is missed while re-arming (if the environment recycles
-   the background process sooner, just start another `wait`). **Run it exactly as written — no `VAR=… ` env-var prefix.** The
+   **stdout** (which your background tool captures) when one arrives. **`--timeout 0`
+   waits forever** — it reconnects the stream internally and only returns when a
+   message actually arrives, so a long-lived doorbell never idle-returns and you
+   don't re-arm on a timer (ideal for a persistent/remote session). A positive
+   `--timeout N` instead returns `{"type":"timeout"}` (exit **0**, a normal quiet
+   re-arm) after N idle seconds — use that if you want the loop to periodically
+   check back in. Either way, messages wake it instantly via streaming and the
+   read cursor is persisted, so nothing is missed between re-arms (if the
+   environment recycles the background process, just start another `wait`).
+   **Run it exactly as written — no `VAR=… ` env-var prefix.** The
    session-scoped state file is auto-detected, and a leading env assignment both
    breaks that and stops the pre-authorization rule (see *Permissions*) from
    matching, which is what makes the listener get blocked.

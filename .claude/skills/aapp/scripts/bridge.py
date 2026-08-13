@@ -424,8 +424,12 @@ def stream_messages(state, since, timeout, deadline=None, on_tick=None):
 
 
 def wait_for_user_message(state, args):
-    """Block until one complete user message arrives; return dict or None."""
-    deadline = time.time() + args.timeout
+    """Block until one complete user message arrives; return dict or None.
+    A `timeout` of 0 (or negative) means wait forever — the loop keeps
+    reconnecting the stream indefinitely and only returns on a real message, so
+    a long-lived doorbell never needs periodic re-arming."""
+    infinite = args.timeout is not None and args.timeout <= 0
+    deadline = None if infinite else time.time() + args.timeout
     since = state.get("last_id") or "all"
     if args.since:
         since = args.since
@@ -451,11 +455,14 @@ def wait_for_user_message(state, args):
     if getattr(args, "presence", True):
         maybe_beat()  # announce we're listening right away
 
-    while time.time() < deadline:
+    while infinite or time.time() < deadline:
         if getattr(args, "presence", True):
             maybe_beat()
-        remaining = max(1, int(deadline - time.time()))
-        read_timeout = min(remaining, 45)  # < ntfy keepalive gap, bounded
+        if infinite:
+            read_timeout = 45  # reconnect cadence; < the relay keepalive gap
+        else:
+            remaining = max(1, int(deadline - time.time()))
+            read_timeout = min(remaining, 45)  # < keepalive gap, bounded
         tick = maybe_beat if getattr(args, "presence", True) else None
         try:
             for nid, env in stream_messages(state, since, read_timeout, deadline=deadline, on_tick=tick):
@@ -1310,10 +1317,11 @@ def build_parser():
 
     w = sub.add_parser("wait", help="block for the next complete user message")
     w.add_argument("--timeout", type=int, default=1800,
-                   help="max seconds to block before returning empty (default 1800). "
-                        "Messages still wake it instantly via streaming; a larger "
-                        "value just means fewer idle returns. The read cursor is "
-                        "persisted, so nothing is missed between re-arms.")
+                   help="max seconds to block before returning empty (default 1800; "
+                        "0 = wait forever, returning only when a message arrives). "
+                        "Messages always wake it instantly via streaming; a larger "
+                        "value (or 0) just means fewer/no idle returns. The read "
+                        "cursor is persisted, so nothing is missed between re-arms.")
     w.add_argument("--since", default=None,
                    help="override read cursor (ntfy id or 'all')")
     w.add_argument("--out", default=None,
