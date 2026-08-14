@@ -10,15 +10,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const OUT_CANDIDATE = process.env.AAPP_OUT || join(HERE, "dist", "app.html");
 mkdirSync(dirname(OUT_CANDIDATE), { recursive: true });
 
-// Derive src/aapp-client.cjs from the canonical wire library so the bundled
-// copy can never drift from the tested source. The file is CommonJS (UMD sets
-// module.exports); we append a shim exposing a named `AappClient` for esbuild.
-const CANON = join(HERE, "..", ".claude", "skills", "aapp", "aapp-client.js");
-const SHIM =
-  "\n\n// --- esbuild interop shim (appended by build.mjs; UMD above is verbatim) ---\n" +
-  'if (typeof module === "object" && module.exports) { module.exports.AappClient = module.exports; }\n';
-writeFileSync(join(HERE, "src", "aapp-client.cjs"), readFileSync(CANON, "utf8") + SHIM);
-
 const result = await build({
   entryPoints: [join(HERE, "src", "main.jsx")],
   bundle: true,

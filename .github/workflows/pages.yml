@@ -15,7 +15,6 @@ on:
                # the main run via the shared concurrency group.
     paths:
       - .claude/skills/aapp/app.html
-      - .claude/skills/aapp/app-next.html
       - .claude/skills/aapp/aapp-client.js
       - .claude/skills/aapp/scripts/sync-client.py
       - site/**
@@ -49,8 +48,7 @@ jobs:
         run: |
           mkdir -p _site
           cp -r site/. _site/                            # landing page + assets (screenshot) + install.md
-          cp .claude/skills/aapp/app.html _site/app.html # the chat app (current)
-          cp .claude/skills/aapp/app-next.html _site/next.html  # React preview (candidate)
+          cp .claude/skills/aapp/app.html _site/app.html # the chat app
           cp install.sh _site/install.sh                 # publish the installer at aapp.run/install.sh
           # Stamp the build id (commit sha) into the app and a sibling
           # version.json so the client can detect a newer deploy and auto-update.
