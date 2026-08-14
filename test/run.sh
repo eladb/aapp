@@ -11,6 +11,9 @@ python3 .claude/skills/aapp/scripts/sync-client.py --check
 echo "== client.test.js (library unit) =="
 node test/client.test.js
 
+echo "== markdown.test.js (renderer / GFM tables) =="
+node test/markdown.test.js
+
 echo "== app.test.js (app-script integration, no browser) =="
 node test/app.test.js
 

@@ -1319,7 +1319,10 @@
       if(ln.trim()===""){ i++; continue; }
       // gather a paragraph (consecutive non-empty, non-special lines)
       var para=[ln]; i++;
-      while(i<lines.length && lines[i].trim()!=="" && !/^\s*```/.test(lines[i]) && !/^\s*(#{1,3})\s/.test(lines[i]) && !/^\s*[-*]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i])){ para.push(lines[i]); i++; }
+      // Stop the paragraph at the start of a block that follows without a blank
+      // line — including a GFM table (a `|` row followed by a delimiter row), so
+      // a table glued right under a line of text still renders as a table.
+      while(i<lines.length && lines[i].trim()!=="" && !/^\s*```/.test(lines[i]) && !/^\s*(#{1,3})\s/.test(lines[i]) && !/^\s*[-*]\s/.test(lines[i]) && !/^\s*\d+\.\s/.test(lines[i]) && !(lines[i].indexOf("|")>=0 && i+1<lines.length && mdIsSep(lines[i+1]))){ para.push(lines[i]); i++; }
       out.push("<p>"+para.map(renderInline).join("<br>")+"</p>");
     }
     if(inCode) out.push(renderCodeBlock(code, codeLang));
