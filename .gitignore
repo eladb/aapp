@@ -4,3 +4,8 @@ __pycache__/
 .aapp/
 # work-in-progress landing-page candidates (never deploy these)
 site/index.candidate*.html
+
+# React preview build (web/)
+web/node_modules/
+web/dist/
+web/src/aapp-client.cjs
