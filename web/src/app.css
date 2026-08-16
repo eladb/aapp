@@ -106,9 +106,11 @@ header{
 }
 .row.them{align-items:flex-start}
 .row.them .bubble{max-width:100%; padding-right:6px; animation:fade-blur .4s var(--ease) both}
+/* Beautiful UI 07: user turn = right-aligned pill on --field, rounded-xl,
+   px-3 py-1.5, flat (no border/shadow) */
 .row.me .bubble{
-  max-width:82%; padding:9px 13px; border-radius:var(--r-xl);
-  background:var(--field); color:var(--ink); box-shadow:var(--shadow-hairline);
+  max-width:82%; padding:7px 12px; border-radius:var(--r-xl);
+  background:var(--field); color:var(--ink); box-shadow:none;
 }
 .bubble .meta{font-family:var(--font-mono); font-size:10px; color:var(--ink-3); margin-top:3px; text-align:right; letter-spacing:0}
 .row.them .bubble .meta{text-align:left}
@@ -267,7 +269,8 @@ body.hide-activity .trace{display:none}
 .empty h2{margin:0 0 6px; color:var(--ink); font-size:16px; font-weight:600}
 .empty p{font-size:13px; line-height:1.6}
 
-/* ---------- composer (Beautiful UI inset field with + / send) ---------- */
+/* ---------- prompt bar (Beautiful UI 08) — single rounded --surface field,
+   leading + attach, trailing filled-accent send that lights up on text ---- */
 .composer{
   background:color-mix(in srgb, var(--page) 88%, transparent);
   -webkit-backdrop-filter:saturate(1.4) blur(12px); backdrop-filter:saturate(1.4) blur(12px);
@@ -275,28 +278,31 @@ body.hide-activity .trace{display:none}
   padding:10px 12px calc(10px + var(--safe-b)); position:relative; z-index:5;
 }
 .composerbar{
-  display:flex; gap:6px; align-items:flex-end; max-width:760px; margin:0 auto;
-  background:var(--field); border-radius:var(--r-xl); padding:5px;
-  box-shadow:var(--shadow-hairline), var(--shadow-inset-field);
-  transition:box-shadow .15s;
+  display:grid; grid-template-columns:28px minmax(0,1fr) 28px; align-items:end; gap:4px;
+  max-width:760px; margin:0 auto;
+  background:var(--surface); border:1px solid var(--line); border-radius:var(--r-window); padding:6px;
+  box-shadow:0 1px 2px #10182808;
+  transition:border-color .15s;
 }
-.composerbar:focus-within{box-shadow:0 0 0 1px var(--accent), 0 0 0 3px var(--accent-tint)}
+.composerbar:focus-within{border-color:var(--line-strong)}
 .composer textarea{
-  flex:1; resize:none; border:none; background:transparent; color:var(--ink);
-  padding:8px 6px; font:inherit; font-size:16px; max-height:38vh; min-height:34px; line-height:1.4; outline:none;
+  min-width:0; resize:none; border:none; background:transparent; color:var(--ink);
+  padding:5px 4px; font:inherit; font-size:16px; max-height:38vh; min-height:28px; line-height:1.28; outline:none;
+  overflow-wrap:anywhere;
 }
 .composer textarea::placeholder{color:var(--ink-3)}
 .attachbtn,.sendbtn{
-  flex:0 0 auto; width:34px; height:34px; border:none; border-radius:var(--r-lg); cursor:pointer;
-  display:grid; place-items:center; transition:.15s; padding:0;
+  flex:0 0 auto; width:28px; height:28px; border:none; border-radius:var(--r-lg); cursor:pointer;
+  display:grid; place-items:center; transition:background-color .15s, color .2s, transform .2s; padding:0; align-self:end;
 }
-.attachbtn{background:transparent; color:var(--ink-2)}
+.attachbtn{background:transparent; color:var(--ink-3); justify-self:start}
 .attachbtn:hover{background:var(--hover); color:var(--ink)}
-.attachbtn:active{transform:scale(.9)}
-.sendbtn{background:var(--surface); color:var(--ink-3); box-shadow:var(--shadow-btn)}
-.sendbtn.ready{background:var(--accent); color:#fff; box-shadow:0 1px 2px #0000001f}
-.sendbtn:active:not(:disabled){transform:scale(.9)}
-.sendbtn:disabled{opacity:.6; cursor:default}
+.attachbtn:active{transform:scale(.94)}
+/* disabled/empty send = neutral chip; enabled (has text) = electric-blue */
+.sendbtn{background:var(--line-strong); color:var(--ink-2)}
+.sendbtn.ready{background:var(--accent); color:#fff}
+.sendbtn:active:not(:disabled){transform:scale(.94)}
+.sendbtn:disabled{cursor:default}
 
 /* ---------- scroll-to-latest FAB ---------- */
 .fab{
@@ -349,15 +355,23 @@ body.hide-activity .trace{display:none}
 .toast{position:fixed; left:50%; bottom:calc(92px + var(--safe-b)); transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--page); padding:9px 16px; border-radius:999px; font-size:13px; font-weight:500; opacity:0; pointer-events:none; transition:.25s; z-index:30}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
 
-/* ---------- long-press action menu ---------- */
-.actmenu{position:fixed; z-index:40; background:var(--surface); border-radius:var(--r-xl); box-shadow:var(--shadow-overlay);
-  padding:5px; min-width:168px; opacity:0; transform:scale(.95) translateY(4px); transform-origin:top center; transition:.14s var(--ease); pointer-events:none}
-.actmenu.show{opacity:1; transform:none; pointer-events:auto}
-.actmenu button{display:flex; align-items:center; gap:11px; width:100%; border:none; background:transparent; color:var(--ink); font:inherit; font-size:14px; text-align:left; padding:9px 12px; border-radius:var(--r-md); cursor:pointer}
-.actmenu button:hover{background:var(--hover)} .actmenu button:active{background:var(--field)}
-.actmenu button .mi{width:18px; text-align:center; flex:0 0 auto; opacity:.7}
-.bubble.flash{animation:flash .6s ease}
-@keyframes flash{0%,100%{box-shadow:var(--shadow-hairline)} 30%{box-shadow:0 0 0 2px var(--accent)}}
+/* ---------- selection actions (Beautiful UI 19) — floating pill toolbar that
+   appears over a text selection inside a bubble; Explain · Improve · Shorten
+   hand the passage to the agent, Copy keeps the plain copy affordance ------- */
+.seltools{position:fixed; z-index:45; left:0; top:0; display:flex; align-items:center; gap:2px;
+  height:36px; padding:4px; background:var(--surface); border-radius:999px; box-shadow:var(--shadow-overlay);
+  opacity:0; transform:translateY(4px) scale(.96); transform-origin:center bottom;
+  transition:opacity .16s var(--ease), transform .18s var(--ease); pointer-events:none;
+  -webkit-font-smoothing:antialiased; font-family:var(--font-ui); white-space:nowrap}
+.seltools.show{opacity:1; transform:none; pointer-events:auto}
+.seltools button{display:inline-flex; align-items:center; gap:5px; height:28px; padding:0 10px; flex:0 0 auto;
+  border:none; background:transparent; color:var(--ink); font:inherit; font-size:12px; font-weight:400;
+  letter-spacing:-.005em; border-radius:999px; cursor:pointer; transition:background-color .15s, transform .1s}
+.seltools button svg{width:14px; height:14px; flex:0 0 auto; display:block}
+.seltools button:hover{background:var(--hover)}
+.seltools button:active{transform:scale(.96)}
+.seltools button.ico{padding:0; width:28px; justify-content:center}
+.seltools .sdiv{width:1px; height:16px; background:var(--line-strong); margin:0 3px; flex:0 0 auto}
 
 /* ---------- keyframes (Beautiful UI) ---------- */
 @keyframes pixel-on{0%,100%{opacity:.15} 18%,42%{opacity:1} 62%{opacity:.15}}

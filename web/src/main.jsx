@@ -69,7 +69,6 @@ function fmtDay(ts) {
 }
 function fmtSize(b) { if (b == null) return ""; if (b < 1024) return b + " B"; if (b < 1048576) return Math.round(b / 1024) + " KB"; return (b / 1048576).toFixed(1) + " MB"; }
 function safeSrc(u) { return /^(https?:|blob:|data:image\/)/i.test(u || "") ? u : "#"; }
-function cssEsc(s) { return window.CSS && CSS.escape ? CSS.escape(s) : String(s).replace(/[^\w-]/g, "_"); }
 
 // ---------- bubble / attachment HTML (ported; rendered via innerHTML so the
 //            markdown Copy buttons and links behave exactly like app.html) ----
@@ -605,72 +604,81 @@ function App() {
     return function () { evs.forEach(function (ev) { document.removeEventListener(ev, set); }); };
   }, []);
 
-  // long-press (and right-click) a message -> action menu (ported)
+  // Selection actions (Beautiful UI 19): highlight text inside a bubble to get a
+  // floating pill toolbar — Explain / Improve / Shorten hand the passage to the
+  // agent; Copy keeps a plain copy path. Replaces the old long-press menu.
   useEffect(() => {
-    const listEl = listRef.current, scrollEl = scrollRef.current;
-    if (!listEl) return;
-    const menu = document.createElement("div");
-    menu.className = "actmenu"; menu.setAttribute("role", "menu");
-    menu.innerHTML =
-      '<button data-a="copy"><span class="mi">⧉</span>Copy</button>' +
-      '<button data-a="quote"><span class="mi">❝</span>Quote reply</button>' +
-      '<button data-a="select"><span class="mi">⌲</span>Select text</button>';
-    document.body.appendChild(menu);
-    let curMid = null, lpTimer = null, startX = 0, startY = 0, moved = false;
-    function bubbleFrom(t) { return t && t.closest ? t.closest(".row .bubble") : null; }
-    function openMenu(bubble, x, y) {
-      const row = bubble.closest(".row"); curMid = row ? row.dataset.mid : null; if (!curMid) return;
-      bubble.classList.add("flash"); setTimeout(function () { bubble.classList.remove("flash"); }, 600);
-      menu.style.visibility = "hidden"; menu.classList.add("show");
-      const mw = menu.offsetWidth || 180, mh = menu.offsetHeight || 150;
-      const px = Math.max(8, Math.min(x - mw / 2, window.innerWidth - mw - 8));
-      let py = y + 10; if (py + mh > window.innerHeight - 8) py = Math.max(8, y - mh - 10);
-      menu.style.left = px + "px"; menu.style.top = py + "px"; menu.style.visibility = "";
-      buzz(12);
+    const scrollEl = scrollRef.current;
+    const ICON = {
+      explain: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 9C9 5.49997 14.5 5.5 14.5 9C14.5 11.5 12 10.9999 12 13.9999"/><path d="M12 18.01L12.01 17.9989"/><path d="M12 22C17.5228 22 22 17.5228 22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 13.8214 2.48697 15.5291 3.33782 17L2.5 21.5L7 20.6622C8.47087 21.513 10.1786 22 12 22Z"/></svg>',
+      improve: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M3 12C9.26752 12 12 9.36306 12 3C12 9.36306 14.7134 12 21 12C14.7134 12 12 14.7134 12 21C12 14.7134 9.26752 12 3 12Z"/></svg>',
+      shorten: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7.23611 7C7.71115 6.46924 8 5.76835 8 5C8 3.34315 6.65685 2 5 2C3.34315 2 2 3.34315 2 5C2 6.65685 3.34315 8 5 8C5.8885 8 6.68679 7.61375 7.23611 7ZM7.23611 7L20 18"/><path d="M7.23611 17C7.71115 17.5308 8 18.2316 8 19C8 20.6569 6.65685 22 5 22C3.34315 22 2 20.6569 2 19C2 17.3431 3.34315 16 5 16C5.8885 16 6.68679 16.3863 7.23611 17ZM7.23611 17L20 6"/></svg>',
+      copy: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+    };
+    const bar = document.createElement("div");
+    bar.className = "seltools"; bar.setAttribute("role", "toolbar"); bar.setAttribute("aria-label", "Selection actions");
+    bar.innerHTML =
+      '<button type="button" data-a="explain">' + ICON.explain + "Explain</button>" +
+      '<button type="button" data-a="improve">' + ICON.improve + "Improve</button>" +
+      '<button type="button" data-a="shorten">' + ICON.shorten + "Shorten</button>" +
+      '<span class="sdiv"></span>' +
+      '<button type="button" class="ico" data-a="copy" aria-label="Copy">' + ICON.copy + "</button>";
+    document.body.appendChild(bar);
+
+    let selText = "", t = null;
+    function bubbleOf(node) { const el = node && node.nodeType === 3 ? node.parentElement : node; return el && el.closest ? el.closest(".row .bubble") : null; }
+    function currentSel() {
+      const sel = window.getSelection();
+      if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
+      const txt = sel.toString().replace(/ /g, " ").trim();
+      if (!txt) return null;
+      const b = bubbleOf(sel.anchorNode);
+      if (!b || bubbleOf(sel.focusNode) !== b) return null;
+      return { txt: txt, sel: sel };
     }
-    function closeMenu() { menu.classList.remove("show"); curMid = null; }
-    function onTouchStart(e) {
-      const b = bubbleFrom(e.target); if (!b) return;
-      moved = false; const t = e.touches[0]; startX = t.clientX; startY = t.clientY;
-      lpTimer = setTimeout(function () { if (!moved) openMenu(b, startX, startY); }, 480);
+    function place(sel) {
+      const rect = sel.getRangeAt(0).getBoundingClientRect();
+      if (!rect || (rect.width === 0 && rect.height === 0)) { hide(); return; }
+      bar.style.visibility = "hidden"; bar.classList.add("show");
+      const bw = bar.offsetWidth || 220, bh = bar.offsetHeight || 36;
+      const cx = rect.left + rect.width / 2;
+      const left = Math.max(8, Math.min(cx - bw / 2, window.innerWidth - bw - 8));
+      let top = rect.top - bh - 8;
+      if (top < 8) top = Math.min(window.innerHeight - bh - 8, rect.bottom + 8);
+      bar.style.left = left + "px"; bar.style.top = top + "px"; bar.style.visibility = "";
     }
-    function onTouchMove(e) {
-      if (!lpTimer) return; const t = e.touches[0];
-      if (Math.abs(t.clientX - startX) > 10 || Math.abs(t.clientY - startY) > 10) { moved = true; clearTimeout(lpTimer); lpTimer = null; }
+    function hide() { bar.classList.remove("show"); selText = ""; }
+    function schedule() {
+      clearTimeout(t);
+      t = setTimeout(function () { const c = currentSel(); if (!c) { hide(); return; } selText = c.txt; place(c.sel); }, 30);
     }
-    function onTouchEnd() { if (lpTimer) { clearTimeout(lpTimer); lpTimer = null; } }
-    function onContext(e) { const b = bubbleFrom(e.target); if (!b) return; e.preventDefault(); openMenu(b, e.clientX, e.clientY); }
-    function onDocClick(e) { if (menu.classList.contains("show") && !menu.contains(e.target)) closeMenu(); }
-    function onMenuClick(e) {
-      const btn = e.target.closest && e.target.closest("button"); if (!btn || !curMid) return;
-      const m = byIdRef.current[curMid], a = btn.dataset.a, mid = curMid; closeMenu();
-      if (!m) return;
-      const text = m.type === "attach" ? (m.text || m.name || m.url || "") : (m.text || "");
+    function quoted(s) { return s.split("\n").map(function (l) { return "> " + l; }).join("\n"); }
+    function onClick(e) {
+      const btn = e.target.closest && e.target.closest("button"); if (!btn) return;
+      const a = btn.dataset.a, text = selText; if (!text) return;
+      buzz(10);
       if (a === "copy") { copyText(text); toast("Copied"); }
-      else if (a === "quote") {
-        const q = text.split("\n").map(function (l) { return "> " + l; }).join("\n");
-        inputRef.current.value = (inputRef.current.value ? inputRef.current.value + "\n" : "") + q + "\n\n";
-        autoGrow(); setCanSend(inputRef.current.value.trim() !== ""); inputRef.current.focus();
-      } else if (a === "select") {
-        const bub = listEl.querySelector('.row[data-mid="' + cssEsc(mid) + '"] .bubble');
-        if (bub) { try { const r = document.createRange(); r.selectNodeContents(bub); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); } catch (_e) {} }
-      }
+      else { const verb = a === "explain" ? "Explain" : a === "improve" ? "Improve" : "Shorten"; submitText(verb + " this:\n\n" + quoted(text)); }
+      try { const s = window.getSelection(); if (s && s.removeAllRanges) s.removeAllRanges(); } catch (_e) {}
+      hide();
     }
-    listEl.addEventListener("touchstart", onTouchStart, { passive: true });
-    listEl.addEventListener("touchmove", onTouchMove, { passive: true });
-    listEl.addEventListener("touchend", onTouchEnd, { passive: true });
-    listEl.addEventListener("contextmenu", onContext);
-    document.addEventListener("click", onDocClick, true);
-    if (scrollEl) scrollEl.addEventListener("scroll", closeMenu, { passive: true });
-    menu.addEventListener("click", onMenuClick);
+    function onDown(e) { if (bar.contains(e.target)) return; hide(); }
+    function onKey(e) { if (e.key === "Escape") hide(); }
+
+    bar.addEventListener("mousedown", function (e) { e.preventDefault(); }); // keep the selection alive when tapping the bar
+    bar.addEventListener("click", onClick);
+    document.addEventListener("selectionchange", schedule);
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("keydown", onKey);
+    if (scrollEl) scrollEl.addEventListener("scroll", hide, { passive: true });
+    window.addEventListener("resize", hide);
     return function () {
-      listEl.removeEventListener("touchstart", onTouchStart);
-      listEl.removeEventListener("touchmove", onTouchMove);
-      listEl.removeEventListener("touchend", onTouchEnd);
-      listEl.removeEventListener("contextmenu", onContext);
-      document.removeEventListener("click", onDocClick, true);
-      if (scrollEl) scrollEl.removeEventListener("scroll", closeMenu);
-      menu.remove();
+      document.removeEventListener("selectionchange", schedule);
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("keydown", onKey);
+      if (scrollEl) scrollEl.removeEventListener("scroll", hide);
+      window.removeEventListener("resize", hide);
+      clearTimeout(t); bar.remove();
     };
     // eslint-disable-next-line
   }, []);
@@ -746,12 +754,12 @@ function App() {
 
       <div className="composer">
         <div className="composerbar">
-          <label className="attachbtn" htmlFor="fileInput" aria-label="Attach a photo or file">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          <label className="attachbtn" htmlFor="fileInput" aria-label="Add attachments and sources">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           </label>
           <input type="file" id="fileInput" className="filein" disabled={!hasTopic}
             onChange={(e) => { const files = Array.prototype.slice.call(e.target.files || []); e.target.value = ""; files.forEach(function (f) { handleFile(f); }); }} />
-          <textarea id="input" ref={inputRef} rows={1} placeholder="Message the agent…" enterKeyHint="send"
+          <textarea id="input" ref={inputRef} rows={1} placeholder="Write a message…" enterKeyHint="send"
             autoCapitalize="sentences" autoComplete="off" disabled={!hasTopic}
             onInput={() => { autoGrow(); setCanSend(inputRef.current.value.trim() !== ""); }}
             onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); } }}
@@ -759,7 +767,7 @@ function App() {
             onBlur={() => setTimeout(() => { if (atBottomRef.current) scrollToBottom(true); }, 100)} />
           <button id="send" className={"sendbtn" + (canSend ? " ready" : "")} aria-label="Send"
             onClick={sendMessage} disabled={!hasTopic}>
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="6"/><polyline points="6 12 12 6 18 12"/></svg>
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
           </button>
         </div>
       </div>
