@@ -33,7 +33,7 @@ the relay message body. Both sides publish and subscribe to the same topic.
   "v": 1,                     // protocol version
   "cid": "web-ab12cd34",      // sender instance id — receivers ignore their own
   "role": "user" | "agent",   // who sent it (phone = user, session = agent)
-  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "ask" | "sync" | "sync-done" | "reload",
+  "type": "msg" | "typing" | "status" | "system" | "activity" | "title" | "icon" | "attach" | "ask" | "tasks" | "recommend" | "sources" | "table" | "insight" | "sync" | "sync-done" | "reload",
   "replay": true,             // present on history re-broadcasts (see Durable history)
   "force": true,              // for type=reload (reload unconditionally)
   "kind": "assistant" | "tool" | "user",   // for type=activity only
@@ -47,8 +47,15 @@ the relay message body. Both sides publish and subscribe to the same topic.
   "last": true,                // true on the final part of a message
   "text": "hello",            // content for msg/system/status
   "state": "on" | "off",      // for type=typing
-  "options": ["Yes","No"],    // for type=ask (tappable answer chips)
+  "options": ["Yes","No"],    // for type=ask (tappable answer chips) / type=recommend ([{label,value,primary?}])
   "freeText": true,            // for type=ask (allow a typed answer too)
+  "items": [ … ],             // for type=tasks ([{id,label,status,meta?}]) / type=sources ([{title,meta?,snippet?,url?}])
+  "title": "Restock plan",    // heading for type=tasks/sources/table/insight
+  "confidence": "high",       // for type=recommend ("high"|"medium"|"low")
+  "columns": [ … ],           // for type=table ([{key,label,align?,kind?}]; kind: text|num|tag|entity)
+  "rows": [ … ],              // for type=table (array of row objects keyed by column.key)
+  "stats": [ … ],             // for type=insight ([{label,value,delta?,tone?}]; tone: up|down|flat|neutral)
+  "followup": "Rebalance?",   // for type=insight (optional follow-up prompt chip)
   "ts": 1735000000000          // epoch ms
 }
 ```
@@ -102,6 +109,42 @@ the relay message body. Both sides publish and subscribe to the same topic.
   `wait` loop picks it up like any reply; the card then locks to the chosen
   answer. Logged and replayed (tagged `replay:true`) so it survives reload, and
   the app de-dupes it by `mid`.
+- **`tasks`** — a live task list (`bridge.py tasks --title "Restock plan"
+  --item "Verify vendors:done:12 suppliers" --item "Draft emails:running"`; item
+  format `label:status[:meta]` with status `todo|running|done|failed`, or `--json`
+  with `[{id,label,status,meta?}]`). The app renders **capsule task rows** with a
+  status token (green check / spinner-ring number / red ✕ / empty ring), a right
+  mono `meta`, and a status chip. Unlike the other types this is **not** de-duped
+  by `mid`: re-running with the same `--mid` **updates** the list in place (a task
+  flips `todo→running→done`) and the app upserts by `mid`. Logged (last write per
+  `mid` wins) and replayed so the latest state survives reload.
+- **`recommend`** — an agent suggestion with a confidence meter and actions
+  (`bridge.py recommend --text "Reorder from \`cone_king\`" --confidence high
+  --option "Accept:accept:primary" --option "Alternatives:alt"`; option format
+  `label:value[:primary]`). The app renders a card: body markdown (inline-code
+  chips), footer = a 3-bar **confidence meter** (`high`→3 green, `medium`→2 amber,
+  `low`→1 amber) + label + action chips (one filled-accent `primary`). Tapping an
+  option sends its `value` back as a normal `role:"user"` `msg` — exactly like
+  `ask` — so `wait` picks it up; the card then locks. De-duped by `mid`, logged,
+  replayed.
+- **`sources`** — context / citation cards (`bridge.py sources --title "All chunks"
+  --item "flavors.ts | 290 chars | …snippet… | https://…"`; item format
+  `title | meta | snippet | url` pipe-separated, or `--json`). The app renders an
+  **"All chunks · N"** heading then mini cards (glyph, title, right mono `meta`,
+  muted `snippet`, optional link chip). De-duped by `mid`, logged, replayed.
+- **`table`** — a records / data table (`bridge.py table --json
+  '{"columns":[{"key","label","align?","kind?"}],"rows":[…],"tags?":{}}'`, from a
+  literal, a file, or `-` stdin). Column `kind` selects the cell renderer:
+  `entity` (colored monogram + name), `tag` (colored-dot chips from an array
+  value), `num` (tabular mono, tinted green/red by sign), else plain text. The app
+  renders a **records table** with a sticky header, hairline rows, horizontal
+  scroll, and a footer count. De-duped by `mid`, logged, replayed.
+- **`insight`** — an insight / stat card (`bridge.py insight --text "… @Creamery …
+  \`-6%\`" --stat "Mint Chip:-4.41%:-$2,377.66:down" --followup "Rebalance?"`; stat
+  format `label:value[:delta][:tone]`, or `--json`). The app renders **prose** with
+  colored `@mentions` and signed deltas, a **stat panel** (colored dot + name + big
+  signed % + small signed $), and an optional follow-up chip that sends its text as
+  a reply. De-duped by `mid`, logged, replayed.
 - **`sync`** — a client request (`role:"user"`) asking the agent to replay
   durable history. Sent once on app boot. The agent's `serve`/`tail` responder
   answers by re-broadcasting its log; other clients ignore it.
@@ -129,7 +172,8 @@ with `bridge.py reload` (a `reload` envelope).
 The relay only caches ~12h, so a late-joining client can't rebuild older
 history from it. The agent therefore keeps an authoritative append-only log of
 chat envelopes (`<state>.log.jsonl`: agent `msg`/`system`/`attach`/`title`/
-`icon`/`activity` and each inbound user `msg`/`attach`). When a client boots it
+`icon`/`activity`/`ask`/`tasks`/`recommend`/`sources`/`table`/`insight` and each
+inbound user `msg`/`attach`). When a client boots it
 publishes a `sync` request; the always-on responder (`bridge.py serve`, folded
 into `tail`) re-broadcasts the log — the last ~400 timeline items (chat messages,
 attachments, **and activity lines**, in the order they happened) then the latest

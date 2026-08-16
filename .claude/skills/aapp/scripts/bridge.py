@@ -590,6 +590,29 @@ def republish_record(state, rec):
             "options": rec.get("options") or [],
             "freeText": rec.get("freeText", True),
         })
+    elif t == "tasks":
+        env.update({"title": rec.get("title") or "", "items": rec.get("items") or []})
+    elif t == "recommend":
+        env.update({
+            "text": rec.get("text") or "",
+            "confidence": rec.get("confidence") or "medium",
+            "options": rec.get("options") or [],
+        })
+    elif t == "sources":
+        env.update({"title": rec.get("title") or "", "items": rec.get("items") or []})
+    elif t == "table":
+        env.update({
+            "title": rec.get("title") or "",
+            "columns": rec.get("columns") or [],
+            "rows": rec.get("rows") or [],
+        })
+        if isinstance(rec.get("tags"), dict):
+            env["tags"] = rec.get("tags")
+    elif t == "insight":
+        env.update({
+            "title": rec.get("title") or "", "text": rec.get("text") or "",
+            "stats": rec.get("stats") or [], "followup": rec.get("followup") or "",
+        })
     elif t == "title":
         env["text"] = rec.get("text") or ""
     elif t == "icon":
@@ -617,7 +640,8 @@ def replay_history(state, state_path, replay_max=REPLAY_MAX_DEFAULT,
             last_title = r
         elif rt == "icon":
             last_icon = r
-        elif rt in ("msg", "system", "attach", "activity", "ask"):
+        elif rt in ("msg", "system", "attach", "activity", "ask",
+                    "tasks", "recommend", "sources", "table", "insight"):
             timeline.append(r)
     timeline = timeline[-replay_max:]
     sent = 0
@@ -1177,6 +1201,209 @@ def cmd_ask(args):
     print(json.dumps({"ask": {"mid": mid, "options": options}}))
 
 
+# --------------------------------------------------------------------------
+# Wave B: agent-driven Beautiful UI components. Each publishes one envelope
+# (role agent, v1, single-part), appends it to the durable log so it replays on
+# reload, and prints the published JSON. Old clients ignore the unknown type.
+# --------------------------------------------------------------------------
+def _load_json_arg(val):
+    """Load a JSON argument that may be a literal JSON string, a file path, or
+    '-' for stdin."""
+    if val is None:
+        return None
+    if val == "-":
+        return json.loads(sys.stdin.read())
+    if os.path.exists(val):
+        with open(val, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return json.loads(val)
+
+
+def _publish_ui(state, args, mtype, mid, extra):
+    """Publish a Wave B UI envelope and mirror it into the durable log."""
+    env = {
+        "v": PROTOCOL_VERSION, "cid": state["cid"], "role": "agent", "type": mtype,
+        "mid": mid, "seq": 0, "last": True, "ts": now_ms(),
+    }
+    env.update(extra)
+    publish_envelope(state["server"], state["topic"], env)
+    rec = {"type": mtype, "role": "agent", "mid": mid, "cid": state["cid"], "ts": env["ts"]}
+    rec.update(extra)
+    append_log(args.state, rec)
+    return env
+
+
+def _parse_task_item(s):
+    """'label:status[:meta]' -> {label,status,meta}. Status defaults to todo."""
+    parts = s.split(":")
+    label = parts[0].strip()
+    status = parts[1].strip().lower() if len(parts) > 1 and parts[1].strip() else "todo"
+    if status not in ("todo", "running", "done", "failed"):
+        status = "todo"
+    meta = ":".join(parts[2:]).strip() if len(parts) > 2 else ""
+    return {"label": label, "status": status, "meta": meta}
+
+
+def cmd_tasks(args):
+    """Publish (or update) a live task list. Re-run with the same --mid to update
+    the list in place as tasks progress (the app upserts by mid)."""
+    state = require_state(args)
+    raw = []
+    if args.json:
+        data = _load_json_arg(args.json)
+        raw = data.get("items", []) if isinstance(data, dict) else (data or [])
+        if isinstance(data, dict) and not args.title:
+            args.title = data.get("title") or ""
+    else:
+        raw = list(args.item or [])
+    items = []
+    for i, it in enumerate(raw):
+        if isinstance(it, str):
+            it = _parse_task_item(it)
+        st = str(it.get("status", "todo")).lower()
+        if st not in ("todo", "running", "done", "failed"):
+            st = "todo"
+        items.append({
+            "id": str(it.get("id", i)), "label": str(it.get("label", "")),
+            "status": st, "meta": str(it.get("meta", "") or ""),
+        })
+    mid = args.mid or ("tasks-" + uuid.uuid4().hex[:12])
+    _publish_ui(state, args, "tasks", mid, {"title": args.title or "", "items": items})
+    print(json.dumps({"tasks": {"mid": mid, "count": len(items)}}))
+
+
+def _parse_reco_option(s):
+    """'label:value[:primary]' -> {label,value,primary}."""
+    parts = s.split(":")
+    label = parts[0].strip()
+    value = parts[1].strip() if len(parts) > 1 and parts[1].strip() else label
+    primary = len(parts) > 2 and parts[2].strip().lower() in ("primary", "1", "true", "yes")
+    return {"label": label, "value": value, "primary": primary}
+
+
+def cmd_recommend(args):
+    """Publish a recommendation card (confidence meter + action chips). Tapping
+    an option sends its value back as a user reply, like `ask`."""
+    state = require_state(args)
+    text = args.text
+    if text == "-" or text is None:
+        text = sys.stdin.read()
+    text = text.strip()
+    if not text:
+        sys.exit("provide --text")
+    conf = (args.confidence or "medium").lower()
+    if conf not in ("high", "medium", "low"):
+        conf = "medium"
+    options = [_parse_reco_option(o) for o in (args.option or [])]
+    mid = "rec-" + uuid.uuid4().hex[:12]
+    _publish_ui(state, args, "recommend", mid, {"text": text, "confidence": conf, "options": options})
+    print(json.dumps({"recommend": {"mid": mid, "confidence": conf, "options": len(options)}}))
+
+
+def _parse_source_item(s):
+    """'title | meta | snippet | url' (pipe-separated) -> source dict."""
+    parts = [p.strip() for p in s.split("|")]
+
+    def at(i):
+        return parts[i] if len(parts) > i else ""
+    return {"title": at(0), "meta": at(1), "snippet": at(2), "url": at(3)}
+
+
+def cmd_sources(args):
+    """Publish context / citation cards."""
+    state = require_state(args)
+    items = []
+    if args.json:
+        data = _load_json_arg(args.json)
+        items = data.get("items", []) if isinstance(data, dict) else (data or [])
+        if isinstance(data, dict) and not args.title:
+            args.title = data.get("title") or ""
+    else:
+        items = [_parse_source_item(s) if isinstance(s, str) else s for s in (args.item or [])]
+    norm = []
+    for it in items:
+        if isinstance(it, str):
+            it = _parse_source_item(it)
+        norm.append({
+            "title": str(it.get("title", "")), "meta": str(it.get("meta", "") or ""),
+            "snippet": str(it.get("snippet", "") or ""), "url": str(it.get("url", "") or ""),
+        })
+    mid = "src-" + uuid.uuid4().hex[:12]
+    _publish_ui(state, args, "sources", mid, {"title": args.title or "", "items": norm})
+    print(json.dumps({"sources": {"mid": mid, "count": len(norm)}}))
+
+
+def cmd_table(args):
+    """Publish a records/data table. Body via --json (a {columns,rows,tags?,title?}
+    object) from a literal string, a file path, or '-' for stdin."""
+    state = require_state(args)
+    data = _load_json_arg(args.json) if args.json else {}
+    if not isinstance(data, dict):
+        sys.exit("table --json must be an object with columns/rows")
+    columns = data.get("columns") or []
+    rows = data.get("rows") or []
+    tags = data.get("tags") if isinstance(data.get("tags"), dict) else None
+    title = args.title or data.get("title") or ""
+    mid = "tbl-" + uuid.uuid4().hex[:12]
+    extra = {"title": title, "columns": columns, "rows": rows}
+    if tags is not None:
+        extra["tags"] = tags
+    _publish_ui(state, args, "table", mid, extra)
+    print(json.dumps({"table": {"mid": mid, "columns": len(columns), "rows": len(rows)}}))
+
+
+def _parse_stat(s):
+    """'label:value[:delta][:tone]' -> stat dict. A field equal to a tone keyword
+    (up/down/flat/neutral) is read as the tone; the other extra field is delta."""
+    parts = [p.strip() for p in s.split(":")]
+    label = parts[0] if parts else ""
+    value = parts[1] if len(parts) > 1 else ""
+    delta = ""
+    tone = ""
+    for p in parts[2:]:
+        if p.lower() in ("up", "down", "flat", "neutral") and not tone:
+            tone = p.lower()
+        elif not delta:
+            delta = p
+    return {"label": label, "value": value, "delta": delta, "tone": tone}
+
+
+def cmd_insight(args):
+    """Publish an insight / stat card (prose with @mentions + signed deltas, plus
+    a stat panel). Stats via --json or repeatable --stat 'label:value[:delta][:tone]'."""
+    state = require_state(args)
+    text = args.text or ""
+    title = args.title or ""
+    followup = args.followup or ""
+    stats = []
+    if args.json:
+        data = _load_json_arg(args.json)
+        if isinstance(data, dict):
+            stats = data.get("stats") or []
+            text = text or data.get("text") or ""
+            title = title or data.get("title") or ""
+            followup = followup or data.get("followup") or ""
+        elif isinstance(data, list):
+            stats = data
+    else:
+        stats = [_parse_stat(s) for s in (args.stat or [])]
+    norm = []
+    for s in stats:
+        if isinstance(s, str):
+            s = _parse_stat(s)
+        tone = str(s.get("tone", "") or "").lower()
+        if tone not in ("up", "down", "flat", "neutral"):
+            tone = ""
+        norm.append({
+            "label": str(s.get("label", "")), "value": str(s.get("value", "")),
+            "delta": str(s.get("delta", "") or ""), "tone": tone,
+        })
+    mid = "ins-" + uuid.uuid4().hex[:12]
+    _publish_ui(state, args, "insight", mid,
+                {"title": title, "text": text, "stats": norm, "followup": followup})
+    print(json.dumps({"insight": {"mid": mid, "stats": len(norm)}}))
+
+
 def cmd_wait(args):
     state = require_state(args)
     msg = wait_for_user_message(state, args)
@@ -1306,6 +1533,48 @@ def build_parser():
     ak.add_argument("--option", action="append", default=[], help="a tappable answer chip (repeatable)")
     ak.add_argument("--no-free-text", action="store_true", help="hide the free-text field; only the options are answerable")
     ak.set_defaults(func=cmd_ask)
+
+    # ---- Wave B: agent-driven Beautiful UI components ----
+    tk = sub.add_parser("tasks", help="publish/update a live task list (Beautiful UI 06)")
+    tk.add_argument("--title", default=None, help="optional list title")
+    tk.add_argument("--item", action="append", default=[],
+                    help="a task as 'label:status[:meta]' (status: todo|running|done|failed); repeatable")
+    tk.add_argument("--json", default=None,
+                    help="items as a JSON array or {title,items} object (literal, file path, or '-' for stdin)")
+    tk.add_argument("--mid", default=None,
+                    help="reuse a prior list's mid to UPDATE it in place as tasks progress")
+    tk.set_defaults(func=cmd_tasks)
+
+    rc = sub.add_parser("recommend", help="publish a recommendation card with a confidence meter (Beautiful UI 09)")
+    rc.add_argument("--text", default=None, help="the recommendation (markdown), or '-' for stdin")
+    rc.add_argument("--confidence", default="medium", choices=["high", "medium", "low"])
+    rc.add_argument("--option", action="append", default=[],
+                    help="an action chip as 'label:value[:primary]'; tapping sends value back like a reply; repeatable")
+    rc.set_defaults(func=cmd_recommend)
+
+    sr = sub.add_parser("sources", help="publish context / citation cards (Beautiful UI 10)")
+    sr.add_argument("--title", default=None, help="optional heading (default 'All chunks')")
+    sr.add_argument("--item", action="append", default=[],
+                    help="a source as 'title | meta | snippet | url' (pipe-separated); repeatable")
+    sr.add_argument("--json", default=None,
+                    help="items as a JSON array or {title,items} object (literal, file path, or '-' for stdin)")
+    sr.set_defaults(func=cmd_sources)
+
+    tb = sub.add_parser("table", help="publish a records/data table (Beautiful UI 11/12/13)")
+    tb.add_argument("--title", default=None, help="optional table title")
+    tb.add_argument("--json", default=None,
+                    help="a {columns,rows,tags?,title?} object (literal, file path, or '-' for stdin)")
+    tb.set_defaults(func=cmd_table)
+
+    ins = sub.add_parser("insight", help="publish an insight / stat card (Beautiful UI 16)")
+    ins.add_argument("--title", default=None, help="optional heading")
+    ins.add_argument("--text", default=None, help="prose with @mentions and signed deltas (markdown)")
+    ins.add_argument("--stat", action="append", default=[],
+                     help="a stat as 'label:value[:delta][:tone]' (tone: up|down|flat|neutral); repeatable")
+    ins.add_argument("--followup", default=None, help="optional follow-up prompt chip")
+    ins.add_argument("--json", default=None,
+                     help="a {text,stats,title?,followup?} object (literal, file path, or '-' for stdin)")
+    ins.set_defaults(func=cmd_insight)
 
     at = sub.add_parser("attach", help="send an image or file to the app")
     at.add_argument("--file", default=None, help="local file to upload and send")

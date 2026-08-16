@@ -90,7 +90,62 @@ cli.feedLine(relayLine("n12", { v: 1, cid: "agent", role: "agent", type: "ask", 
 cli.feedLine(relayLine("n13", { v: 1, cid: "agent", role: "agent", type: "ask", mid: "ask1", text: "Deploy to prod?", options: ["Yes", "No"] }));
 ok("ask emitted once, options normalized", asks.length === 1 && asks[0].options.length === 2 && asks[0].options[0].label === "Yes" && asks[0].options[0].value === "Yes");
 ok("ask freeText:false respected", asks[0].freeText === false);
-ok("cursor tracks last id", cli.cursor === "n13");
+
+// ---- Wave B: tasks (live task list) ----
+let tasks = [];
+cli.on("tasks", (t) => tasks.push(t));
+cli.feedLine(relayLine("n14", { v: 1, cid: "agent", role: "agent", type: "tasks", mid: "tk1", title: "Restock",
+  items: [{ id: "a", label: "Verify vendors", status: "done", meta: "12 suppliers" }, "Draft emails"] }));
+ok("tasks emitted + items normalized", tasks.length === 1 && tasks[0].title === "Restock" && tasks[0].items.length === 2);
+ok("task done item normalized", tasks[0].items[0].status === "done" && tasks[0].items[0].meta === "12 suppliers");
+ok("task string item -> todo", tasks[0].items[1].status === "todo" && tasks[0].items[1].label === "Draft emails");
+cli.feedLine(relayLine("n15", { v: 1, cid: "agent", role: "agent", type: "tasks", mid: "tk1", title: "Restock",
+  items: [{ id: "a", label: "Verify vendors", status: "done" }, { label: "Draft emails", status: "running" }] }));
+ok("tasks re-emits by mid to update (not de-duped)", tasks.length === 2 && tasks[1].items[1].status === "running");
+
+// ---- Wave B: recommend (confidence + options) ----
+let recos = [];
+cli.on("recommend", (r) => recos.push(r));
+cli.feedLine(relayLine("n16", { v: 1, cid: "agent", role: "agent", type: "recommend", mid: "rc1",
+  text: "Reorder from `cone_king`.", confidence: "high", options: ["Accept:accept:primary", { label: "Alternatives", value: "alt" }] }));
+cli.feedLine(relayLine("n17", { v: 1, cid: "agent", role: "agent", type: "recommend", mid: "rc1", text: "dup", confidence: "high", options: [] }));
+ok("recommend emitted once, de-duped by mid", recos.length === 1);
+ok("recommend confidence + options normalized", recos[0].confidence === "high" && recos[0].options.length === 2);
+ok("recommend option value normalized", recos[0].options[1].label === "Alternatives" && recos[0].options[1].value === "alt");
+cli.feedLine(relayLine("n18", { v: 1, cid: "agent", role: "agent", type: "recommend", mid: "rc2", text: "x", confidence: "bogus", options: [] }));
+ok("recommend bad confidence -> medium", recos[1].confidence === "medium");
+
+// ---- Wave B: sources (context/citation cards) ----
+let sources = [];
+cli.on("sources", (s) => sources.push(s));
+cli.feedLine(relayLine("n19", { v: 1, cid: "agent", role: "agent", type: "sources", mid: "sr1", title: "All chunks",
+  items: [{ title: "flavors.ts", meta: "290 chars", snippet: "cold chain", url: "https://x/y" }, "bare title"] }));
+cli.feedLine(relayLine("n20", { v: 1, cid: "agent", role: "agent", type: "sources", mid: "sr1", items: [] }));
+ok("sources emitted once, de-duped by mid", sources.length === 1 && sources[0].items.length === 2);
+ok("source item normalized", sources[0].items[0].title === "flavors.ts" && sources[0].items[0].meta === "290 chars" && sources[0].items[0].url === "https://x/y");
+ok("source bare string normalized", sources[0].items[1].title === "bare title" && sources[0].items[1].snippet === "");
+
+// ---- Wave B: table (records/data table) ----
+let tabs = [];
+cli.on("table", (t) => tabs.push(t));
+cli.feedLine(relayLine("n21", { v: 1, cid: "agent", role: "agent", type: "table", mid: "tb1", title: "Companies",
+  columns: [{ key: "co", label: "Company", kind: "entity" }, "cat", { key: "rev", label: "Revenue", kind: "num", align: "right" }],
+  rows: [{ co: "Aurora", cat: "Gelato", rev: "+$12" }] }));
+cli.feedLine(relayLine("n22", { v: 1, cid: "agent", role: "agent", type: "table", mid: "tb1", columns: [], rows: [] }));
+ok("table emitted once, de-duped by mid", tabs.length === 1 && tabs[0].columns.length === 3 && tabs[0].rows.length === 1);
+ok("table columns normalized", tabs[0].columns[0].kind === "entity" && tabs[0].columns[1].key === "cat" && tabs[0].columns[2].align === "right");
+
+// ---- Wave B: insight (insight/stat card) ----
+let insights = [];
+cli.on("insight", (x) => insights.push(x));
+cli.feedLine(relayLine("n23", { v: 1, cid: "agent", role: "agent", type: "insight", mid: "in1", title: "Insights",
+  text: "Worst performer in @Creamery is Rocky Road `-6%`.",
+  stats: [{ label: "Mint Chip", value: "-4.41%", delta: "-$2,377.66", tone: "down" }], followup: "Rebalance?" }));
+cli.feedLine(relayLine("n24", { v: 1, cid: "agent", role: "agent", type: "insight", mid: "in1", text: "dup", stats: [] }));
+ok("insight emitted once, de-duped by mid", insights.length === 1 && insights[0].stats.length === 1);
+ok("insight fields normalized", insights[0].stats[0].tone === "down" && insights[0].stats[0].delta === "-$2,377.66" && insights[0].followup === "Rebalance?");
+
+ok("cursor tracks last id", cli.cursor === "n24");
 
 // ---- presence ----
 console.log("presence");

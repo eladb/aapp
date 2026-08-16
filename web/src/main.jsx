@@ -234,6 +234,183 @@ function AskCard({ m, onChoose, onCustom, onDismiss }) {
     </div>
   );
 }
+// ---------- Wave B: agent-driven Beautiful UI components ----------
+// tasks (Beautiful UI 06) — capsule task rows with a status token + chip.
+function TaskTok({ status, n }) {
+  if (status === "done")
+    return (
+      <span className="tasktok"><span className="chk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5" /></svg></span></span>
+    );
+  if (status === "failed")
+    return (
+      <span className="tasktok"><span className="chk xf"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6L6 18M6 6l12 12" /></svg></span></span>
+    );
+  if (status === "running")
+    return (
+      <span className="tasktok">
+        <svg className="ring" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke="var(--line-strong)" strokeWidth="2.4" /><path d="M12 2a10 10 0 0 1 10 10" stroke="var(--accent)" strokeWidth="2.4" strokeLinecap="round" /></svg>
+        <span className="num">{n}</span>
+      </span>
+    );
+  return <span className="tasktok"><span className="todo" /></span>;
+}
+function TaskList({ m }) {
+  const items = m.items || [];
+  const chipText = { done: "Done", running: "Running", failed: "Failed", todo: "To do" };
+  return (
+    <div className="tasklist" data-mid={m.mid}>
+      {m.title ? <div className="taskhead">{m.title}</div> : null}
+      {items.map((it, i) => (
+        <div className="taskrow" key={it.id || i}>
+          <TaskTok status={it.status} n={i + 1} />
+          <span className="tlabel">{it.label}</span>
+          {it.meta ? <span className="tmeta">{it.meta}</span> : null}
+          <span className={"taskchip " + it.status}>{chipText[it.status] || it.status}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// recommend (Beautiful UI 09) — suggestion card, body markdown w/ inline-code
+// chips, footer = confidence meter + label + action chips (one filled-accent).
+function ConfMeter({ level }) {
+  const filled = level === "high" ? 3 : level === "medium" ? 2 : 1;
+  const color = level === "high" ? "var(--green)" : "var(--orange)";
+  return (
+    <span className="cmeter" aria-hidden="true">
+      {[0, 1, 2].map((i) => <span key={i} className="cbar" style={{ background: i < filled ? color : "var(--line-strong)" }} />)}
+    </span>
+  );
+}
+function RecommendCard({ m, onChoose }) {
+  const label = { high: "High confidence", medium: "Medium confidence", low: "Low confidence" }[m.confidence] || "Confidence";
+  return (
+    <div className="recowrap" data-mid={m.mid}>
+      <div className={"recocard" + (m.answered ? " answered" : "")}>
+        <div className="recobody" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text || "") }} />
+        <div className="recofoot">
+          <span className="confbox"><ConfMeter level={m.confidence} /><span className="conflbl">{label}</span></span>
+          <span className="recobtns">
+            {(m.options || []).map((o, i) => (
+              <button key={i} type="button"
+                className={"recobtn" + (o.primary ? " primary" : "") + (m.answered && m.chosen === o.value ? " chosen" : "")}
+                onClick={() => { if (!m.answered) onChoose(m, o.value); }}>{o.label}</button>
+            ))}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// sources (Beautiful UI 10) — "All chunks · N" heading + mini context cards.
+function SourcesCards({ m }) {
+  const items = m.items || [];
+  return (
+    <div className="srcwrap" data-mid={m.mid}>
+      <div className="srchead"><span className="srctitle">{m.title || "All chunks"}</span><span className="srccount">{items.length}</span></div>
+      {items.map((it, i) => (
+        <div className="srccard" key={i}>
+          <div className="srcbar">
+            <span className="srcname">
+              <svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10" /></svg>
+              <span className="srctt">{it.title}</span>
+            </span>
+            {it.meta ? <span className="srcmeta">{it.meta}</span> : null}
+          </div>
+          {it.snippet ? <p className="srcsnip">{it.snippet}</p> : null}
+          {it.url ? (
+            <div className="srclinkwrap">
+              <a className="srclink" href={safeSrc(it.url)} target="_blank" rel="noopener noreferrer">
+                <span className="srcurl">{it.url}</span>
+                <svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M7 17L17 7M7 7h10v10" /></svg>
+              </a>
+            </div>
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// table (Beautiful UI 11/12/13) — records table w/ monogram, tag chips, tinted
+// numeric mono columns; horizontal scroll.
+const TAG_HUES = ["#9a5cff", "#c84f9d", "#f09a2f", "#3d9aff", "#3dbb72", "#e3474c", "#12b5b0", "#8a8f98"];
+function hueFor(s) { let h = 0; s = String(s); for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0; return TAG_HUES[h % TAG_HUES.length]; }
+function numTone(s) { s = String(s == null ? "" : s).trim(); if (/^[-(]/.test(s) || /^−/.test(s)) return "neg"; if (/^\+/.test(s)) return "pos"; return ""; }
+function TableCell({ col, row }) {
+  const v = row[col.key];
+  const align = col.align || (col.kind === "num" ? "right" : "left");
+  const st = { textAlign: align };
+  if (col.kind === "tag") {
+    const tags = Array.isArray(v) ? v : v ? [v] : [];
+    return <td className="rcell" style={st}><span className="rtags">{tags.map((t, i) => { const c = hueFor(t); return <span key={i} className="rtag"><span className="rtdot" style={{ background: c }} />{String(t)}</span>; })}</span></td>;
+  }
+  if (col.kind === "num") return <td className={"rcell rnum " + numTone(v)} style={st}>{v == null || v === "" ? "—" : String(v)}</td>;
+  if (col.kind === "entity") {
+    const s = String(v == null ? "" : v);
+    return <td className="rcell rentity" style={st}><span className="rmark" style={{ background: hueFor(s) }}>{(s.trim().charAt(0) || "•").toUpperCase()}</span><span className="rname">{s}</span></td>;
+  }
+  return <td className="rcell" style={st}>{v == null || v === "" ? <span className="rmuted">—</span> : String(v)}</td>;
+}
+function RecordsTable({ m }) {
+  const cols = m.columns || [];
+  const rows = m.rows || [];
+  return (
+    <div className="tblwrap" data-mid={m.mid}>
+      {m.title ? <div className="tblhead"><span className="tbltitle">{m.title}</span><span className="tblcount">{rows.length}</span></div> : null}
+      <div className="tblscroll" tabIndex={0}>
+        <table className="rtable">
+          <thead><tr>{cols.map((c, i) => <th key={i} className="rhcell" style={{ textAlign: c.align || (c.kind === "num" ? "right" : "left") }}>{c.label}</th>)}</tr></thead>
+          <tbody>{rows.map((r, ri) => <tr className="rrow" key={ri}>{cols.map((c, ci) => <TableCell key={ci} col={c} row={r} />)}</tr>)}</tbody>
+        </table>
+      </div>
+      <div className="tblfoot">{rows.length} {rows.length === 1 ? "record" : "records"}</div>
+    </div>
+  );
+}
+
+// insight (Beautiful UI 16) — prose w/ colored @mentions + signed deltas, a
+// stat panel, and an optional follow-up chip.
+function insightProse(text) {
+  let html = esc(text);
+  html = html.replace(/`([^`]+)`/g, function (_m, c) {
+    const t = c.trim(); const cls = /^[-(−]/.test(t) ? "neg" : /^\+/.test(t) ? "pos" : "";
+    return '<code class="insd ' + cls + '">' + c + "</code>";
+  });
+  html = html.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  html = html.replace(/@([A-Za-z0-9_]+)/g, '<span class="insmention"><span class="insmdot"></span>@$1</span>');
+  return html;
+}
+function statTone(tone, s) {
+  if (tone === "up") return "pos"; if (tone === "down") return "neg";
+  return numTone(s);
+}
+function InsightCard({ m, onFollow }) {
+  const stats = m.stats || [];
+  return (
+    <div className="inswrap" data-mid={m.mid}>
+      <div className="inscard">
+        {m.title ? <div className="inshead"><span className="institle">{m.title}</span>{stats.length ? <span className="inscount">{stats.length}</span> : null}</div> : null}
+        {m.text ? <p className="insprose" dangerouslySetInnerHTML={{ __html: insightProse(m.text) }} /> : null}
+        {stats.length ? (
+          <div className="insstats">
+            {stats.map((s, i) => (
+              <div className="insstat" key={i}>
+                <span className="insname"><span className={"insdot " + (s.tone || "")} />{s.label}</span>
+                <span className={"insval " + statTone(s.tone, s.value)}>{s.value}</span>
+                {s.delta ? <code className={"insdelta " + statTone(s.tone, s.delta)}>{s.delta}</code> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {m.followup ? <button type="button" className="insfollow" onClick={() => onFollow(m.followup)}>{m.followup}</button> : null}
+      </div>
+    </div>
+  );
+}
+
 function ThinkingPill({ startTs, label }) {
   const [el, setEl] = useState("0.0s");
   useEffect(() => {
@@ -336,7 +513,7 @@ function App() {
     setUnread(0); atBottomRef.current = true; setShowFab(false);
   }
   function afterAppend(m) {
-    const chatOrAsk = m && (m.type === "msg" || m.type === "attach" || m.type === "ask");
+    const chatOrAsk = m && (m.type === "msg" || m.type === "attach" || m.type === "ask" || m.type === "tasks" || m.type === "recommend" || m.type === "sources" || m.type === "table" || m.type === "insight");
     if (atBottomRef.current) needScrollRef.current = true;
     else if (chatOrAsk) { setUnread((u) => u + 1); setShowFab(true); }
     forceRender(); save();
@@ -455,6 +632,40 @@ function App() {
     const el = inputRef.current; if (!el) return;
     try { el.focus(); scrollToBottom(true); } catch (e) {}
   }
+  // ---- Wave B inbound handlers (fold client events into the message model) ----
+  function onTasks(p) {
+    let m = byIdRef.current[p.mid];
+    if (!m) { m = { mid: p.mid, role: "agent", type: "tasks", title: p.title, items: p.items, ts: p.ts, done: true }; byIdRef.current[p.mid] = m; messagesRef.current.push(m); }
+    else { m.title = p.title; m.items = p.items; } // same mid UPDATES the list live
+    afterAppend(m); pruneMemory();
+  }
+  function onRecommend(p) {
+    if (byIdRef.current[p.mid]) return;
+    const m = { mid: p.mid, role: "agent", type: "recommend", text: p.text, confidence: p.confidence, options: p.options || [], answered: false, chosen: null, ts: p.ts, done: true };
+    byIdRef.current[p.mid] = m; messagesRef.current.push(m);
+    setTyping(false); afterAppend(m); pruneMemory();
+    if (!p.replay) buzz(14);
+  }
+  function onRecoChoose(m, val) {
+    if (m.answered) return;
+    m.answered = true; m.chosen = val; forceRender(); save(); buzz(8);
+    submitText(val);
+  }
+  function onSources(p) {
+    if (byIdRef.current[p.mid]) return;
+    const m = { mid: p.mid, role: "agent", type: "sources", title: p.title, items: p.items, ts: p.ts, done: true };
+    byIdRef.current[p.mid] = m; messagesRef.current.push(m); afterAppend(m); pruneMemory();
+  }
+  function onTable(p) {
+    if (byIdRef.current[p.mid]) return;
+    const m = { mid: p.mid, role: "agent", type: "table", title: p.title, columns: p.columns, rows: p.rows, tags: p.tags, ts: p.ts, done: true };
+    byIdRef.current[p.mid] = m; messagesRef.current.push(m); afterAppend(m); pruneMemory();
+  }
+  function onInsight(p) {
+    if (byIdRef.current[p.mid]) return;
+    const m = { mid: p.mid, role: "agent", type: "insight", title: p.title, text: p.text, stats: p.stats, followup: p.followup, ts: p.ts, done: true };
+    byIdRef.current[p.mid] = m; messagesRef.current.push(m); afterAppend(m); pruneMemory();
+  }
 
   // ---------- sending ----------
   async function submitText(text) {
@@ -555,6 +766,11 @@ function App() {
     client.on("attach", addAttach);
     client.on("activity", addActivity);
     client.on("ask", onAsk);
+    client.on("tasks", onTasks);
+    client.on("recommend", onRecommend);
+    client.on("sources", onSources);
+    client.on("table", onTable);
+    client.on("insight", onInsight);
     client.on("typing", function (t) { setTyping(t.state === "on"); });
     client.on("status", function (s) { showStatus(s.text); });
     client.on("title", function (t) { setAppName(t.text); });
@@ -713,6 +929,11 @@ function App() {
     }
     if (m.type === "system") blocks.push(<div className="sys" key={m.mid} data-mid={m.mid}>{m.text}</div>);
     else if (m.type === "ask") blocks.push(<AskCard key={m.mid} m={m} onChoose={onAskChoose} onCustom={focusComposer} onDismiss={onAskDismiss} />);
+    else if (m.type === "tasks") blocks.push(<TaskList key={m.mid} m={m} />);
+    else if (m.type === "recommend") blocks.push(<RecommendCard key={m.mid} m={m} onChoose={onRecoChoose} />);
+    else if (m.type === "sources") blocks.push(<SourcesCards key={m.mid} m={m} />);
+    else if (m.type === "table") blocks.push(<RecordsTable key={m.mid} m={m} />);
+    else if (m.type === "insight") blocks.push(<InsightCard key={m.mid} m={m} onFollow={submitText} />);
     else blocks.push(<MessageRow key={m.mid} m={m} />);
     i++;
   }

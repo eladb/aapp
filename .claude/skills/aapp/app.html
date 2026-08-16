@@ -554,6 +554,79 @@
     return { mid: mid, envelopes: envelopes };
   }
 
+  // ---- Wave B: normalization helpers for the agent-driven UI types -------
+  // These mirror the bridge.py command shapes; each keeps the emitted payload
+  // shape-stable regardless of how sloppy the envelope on the wire is.
+  function _str(v) { return v == null ? "" : String(v); }
+  var TASK_STATES = ["todo", "running", "done", "failed"];
+  function normTaskItems(items) {
+    var out = [];
+    if (!Array.isArray(items)) return out;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it == null) continue;
+      if (typeof it === "string") { out.push({ id: String(i), label: it, status: "todo", meta: "" }); continue; }
+      var st = _str(it.status || "todo").toLowerCase();
+      if (TASK_STATES.indexOf(st) < 0) st = "todo";
+      out.push({ id: it.id != null ? String(it.id) : String(i), label: _str(it.label), status: st, meta: _str(it.meta) });
+    }
+    return out;
+  }
+  function normRecoOptions(options) {
+    var out = [];
+    if (!Array.isArray(options)) return out;
+    for (var i = 0; i < options.length; i++) {
+      var o = options[i];
+      if (o == null) continue;
+      if (typeof o === "string") { out.push({ label: o, value: o, primary: false }); continue; }
+      out.push({
+        label: _str(o.label != null ? o.label : o.value),
+        value: _str(o.value != null ? o.value : o.label),
+        primary: !!o.primary,
+      });
+    }
+    return out;
+  }
+  function normSourceItems(items) {
+    var out = [];
+    if (!Array.isArray(items)) return out;
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      if (it == null) continue;
+      if (typeof it === "string") { out.push({ title: it, meta: "", snippet: "", url: "" }); continue; }
+      out.push({ title: _str(it.title), meta: _str(it.meta), snippet: _str(it.snippet), url: _str(it.url) });
+    }
+    return out;
+  }
+  function normColumns(cols) {
+    var out = [];
+    if (!Array.isArray(cols)) return out;
+    for (var i = 0; i < cols.length; i++) {
+      var c = cols[i];
+      if (c == null) continue;
+      if (typeof c === "string") { out.push({ key: c, label: c, align: "left", kind: "text" }); continue; }
+      out.push({
+        key: _str(c.key != null ? c.key : c.label),
+        label: _str(c.label != null ? c.label : c.key),
+        align: _str(c.align || ""),
+        kind: _str(c.kind || "text"),
+      });
+    }
+    return out;
+  }
+  function normStats(stats) {
+    var out = [];
+    if (!Array.isArray(stats)) return out;
+    for (var i = 0; i < stats.length; i++) {
+      var s = stats[i];
+      if (s == null) continue;
+      var tone = _str(s.tone || "").toLowerCase();
+      if (["up", "down", "flat", "neutral"].indexOf(tone) < 0) tone = "";
+      out.push({ label: _str(s.label), value: _str(s.value), delta: _str(s.delta), tone: tone });
+    }
+    return out;
+  }
+
   // ---- tiny event emitter ------------------------------------------------
   function Emitter() {
     this._handlers = {};
@@ -638,6 +711,14 @@
     this._seenAtt = Object.create(null); // mid -> true (attach)
     this._seenAct = Object.create(null); // mid -> true (activity)
     this._seenAsk = Object.create(null); // mid -> true (ask / approval card)
+    // Wave B agent-driven UI types. `tasks` is intentionally NOT tracked here:
+    // re-emitting the same mid UPDATES the live list (the UI upserts by mid), so
+    // it must be allowed through every time (genuine duplicate deliveries are
+    // still dropped by the ntfy-line-id de-dupe upstream).
+    this._seenRecommend = Object.create(null); // mid -> true (recommend card)
+    this._seenSources = Object.create(null);   // mid -> true (context/citation cards)
+    this._seenTable = Object.create(null);     // mid -> true (records table)
+    this._seenInsight = Object.create(null);   // mid -> true (insight/stat card)
     this._msgs = Object.create(null); // mid -> {role,type,ts,parts,done}
     this._handled = 0; // count of inbound envelopes, for periodic pruning
 
@@ -892,6 +973,16 @@
         return this._handleAttach(env, ntfyId);
       case "ask":
         return this._handleAsk(env, ntfyId);
+      case "tasks":
+        return this._handleTasks(env, ntfyId);
+      case "recommend":
+        return this._handleRecommend(env, ntfyId);
+      case "sources":
+        return this._handleSources(env, ntfyId);
+      case "table":
+        return this._handleTable(env, ntfyId);
+      case "insight":
+        return this._handleInsight(env, ntfyId);
       case "msg":
       case "system":
         return this._handleMsg(env, ntfyId);
@@ -1006,6 +1097,86 @@
     });
   };
 
+  // tasks — a live task list (Beautiful UI 06). Unlike ask/sources/etc this is
+  // NOT de-duped by mid: re-emitting the same mid is how the agent UPDATES the
+  // list in place (a task flips todo→running→done), and the UI upserts by mid.
+  AappClient.prototype._handleTasks = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid) return;
+    this.emit("tasks", {
+      mid: mid,
+      title: env.title || "",
+      items: normTaskItems(env.items),
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  // recommend — an agent suggestion with a confidence meter and action chips
+  // (Beautiful UI 09). Tapping an option sends its `value` back as a user msg
+  // (like ask). De-duped by mid so a replay never double-renders it.
+  AappClient.prototype._handleRecommend = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenRecommend[mid]) return;
+    this._seenRecommend[mid] = true;
+    var conf = _str(env.confidence || "medium").toLowerCase();
+    if (["high", "medium", "low"].indexOf(conf) < 0) conf = "medium";
+    this.emit("recommend", {
+      mid: mid,
+      text: env.text || "",
+      confidence: conf,
+      options: normRecoOptions(env.options),
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  // sources — context / citation cards (Beautiful UI 10). De-duped by mid.
+  AappClient.prototype._handleSources = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenSources[mid]) return;
+    this._seenSources[mid] = true;
+    this.emit("sources", {
+      mid: mid,
+      title: env.title || "",
+      items: normSourceItems(env.items),
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  // table — a records/data table (Beautiful UI 11/12/13). De-duped by mid.
+  AappClient.prototype._handleTable = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenTable[mid]) return;
+    this._seenTable[mid] = true;
+    this.emit("table", {
+      mid: mid,
+      title: env.title || "",
+      columns: normColumns(env.columns),
+      rows: Array.isArray(env.rows) ? env.rows : [],
+      tags: env.tags && typeof env.tags === "object" ? env.tags : null,
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
+  // insight — an insight / stat card (Beautiful UI 16). De-duped by mid.
+  AappClient.prototype._handleInsight = function (env, ntfyId) {
+    var mid = env.mid || ntfyId;
+    if (!mid || this._seenInsight[mid]) return;
+    this._seenInsight[mid] = true;
+    this.emit("insight", {
+      mid: mid,
+      title: env.title || "",
+      text: env.text || "",
+      stats: normStats(env.stats),
+      followup: _str(env.followup || env.follow || ""),
+      ts: env.ts || now(),
+      replay: !!env.replay,
+    });
+  };
+
   // Bound the de-dupe indexes and reassembly buffers so a long-lived session
   // doesn't grow without limit. String keys iterate in insertion order, so
   // dropping the first N discards the oldest — the ones the read cursor has
@@ -1016,6 +1187,10 @@
     trimObject(this._seenAtt, 3000, 2000);
     trimObject(this._seenAct, 3000, 2000);
     trimObject(this._seenAsk, 3000, 2000);
+    trimObject(this._seenRecommend, 3000, 2000);
+    trimObject(this._seenSources, 3000, 2000);
+    trimObject(this._seenTable, 3000, 2000);
+    trimObject(this._seenInsight, 3000, 2000);
     trimObject(this._msgs, 3000, 2000);
   };
   function trimObject(obj, cap, keep) {
