@@ -10,10 +10,11 @@
 /* ---------- design tokens: :root = light, dark via prefers-color-scheme ---- */
 :root{
   --page:#fafafb; --canvas:#f1f2f3; --surface:#ffffff; --inset:#f7f8f9;
-  --hover:#f4f5f6; --field:#f2f2f3; --line:#ecedef; --line-strong:#e0e2e5;
+  --hover:#f4f5f6; --hover-2:#e7e9eb; --field:#f2f2f3; --line:#ecedef; --line-strong:#e0e2e5;
   --ink:#1f2124; --ink-2:#62656b; --ink-3:#9a9da3;
   --accent:#0285ff; --accent-ink:#0170dd; --accent-tint:#e9f3ff;
   --green:#189a4d; --orange:#ef720c; --red:#e3474c;
+  --green-tint:#e8f5ed; --red-tint:#fcecec;
   --stripe:#49494913;
   --code-bg:#f7f8f9; --code-fg:#1f2124;
   --shadow-hairline:0 0 0 1px var(--line);
@@ -25,16 +26,17 @@
   --ease:cubic-bezier(.23,1,.32,1);
   --font-ui:"Inter","Inter Fallback",system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
   --font-mono:"JetBrains Mono","JetBrains Mono Fallback",ui-monospace,"SF Mono",SFMono-Regular,Menlo,monospace;
-  --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px; --r-card:10px;
+  --r-sm:4px; --r-md:6px; --r-lg:8px; --r-xl:12px; --r-card:10px; --r-window:14px;
   --safe-t:env(safe-area-inset-top); --safe-b:env(safe-area-inset-bottom);
 }
 @media (prefers-color-scheme:dark){
   :root{
     --page:#17181a; --canvas:#1c1d1f; --surface:#232427; --inset:#1f2022;
-    --hover:#2a2b2e; --field:#2b2c2f; --line:#2e3033; --line-strong:#3a3c40;
+    --hover:#2a2b2e; --hover-2:#313236; --field:#2b2c2f; --line:#2e3033; --line-strong:#3a3c40;
     --ink:#f2f3f4; --ink-2:#a5a8ad; --ink-3:#6c6f75;
     --accent:#3d9aff; --accent-ink:#7ec0ff; --accent-tint:#3d9aff29;
     --green:#3dbb72; --orange:#f68f3c; --red:#ee5c61;
+    --green-tint:#3dbb7224; --red-tint:#ee5c6124;
     --stripe:#ffffff0e;
     --code-bg:#1a1b1d; --code-fg:#e6e8ea;
     --shadow-btn:0 0 0 1px var(--line-strong),0 1px 2px #0000004d;
@@ -103,7 +105,7 @@ header{
   animation:pop-in .2s var(--ease) both;
 }
 .row.them{align-items:flex-start}
-.row.them .bubble{max-width:100%; padding-right:6px}
+.row.them .bubble{max-width:100%; padding-right:6px; animation:fade-blur .4s var(--ease) both}
 .row.me .bubble{
   max-width:82%; padding:9px 13px; border-radius:var(--r-xl);
   background:var(--field); color:var(--ink); box-shadow:var(--shadow-hairline);
@@ -121,12 +123,18 @@ header{
 .bubble code.inline{background:var(--inset); box-shadow:var(--shadow-hairline); padding:1px 5px; border-radius:var(--r-sm); font-size:.86em; font-family:var(--font-mono); color:var(--ink)}
 .row.me .bubble code.inline{background:var(--surface)}
 
-/* code block — mono, inset surface, hairline, Copy chip top-right */
-.codewrap{position:relative; margin:8px 0}
-.bubble pre{background:var(--code-bg); color:var(--code-fg); padding:30px 13px 13px; border-radius:var(--r-lg); box-shadow:var(--shadow-hairline); overflow-x:auto; margin:0; font-size:12px; line-height:1.6}
+/* code block — Beautiful UI 17: filename + language header bar, dark inset body */
+.codewrap{margin:8px 0; border-radius:var(--r-card); background:var(--surface); box-shadow:var(--shadow-card); overflow:hidden}
+.codebar{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:7px 10px 7px 12px; border-bottom:1px solid var(--line)}
+.codebar .cbl{display:flex; align-items:baseline; gap:8px; min-width:0}
+.codebar .cbname{font-family:var(--font-mono); font-size:12px; font-weight:500; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.codebar .cblang{font-size:11.5px; color:var(--ink-3); flex:0 0 auto}
+.copy{flex:0 0 auto; display:inline-flex; align-items:center; gap:5px; height:24px; padding:0 7px; font-size:11.5px; font-weight:500;
+  border-radius:var(--r-md); border:none; background:transparent; color:var(--ink-3); cursor:pointer; transition:.1s}
+.copy svg{width:10px; height:10px}
+.copy:hover{background:var(--hover); color:var(--ink)} .copy:active{transform:scale(.96)}
+.bubble pre{background:var(--code-bg); color:var(--code-fg); padding:12px 13px; border-radius:0; box-shadow:none; overflow-x:auto; margin:0; font-size:12px; line-height:1.6}
 .bubble pre code{font-family:var(--font-mono)}
-.copy{position:absolute; top:6px; right:6px; font-family:var(--font-mono); font-size:10px; font-weight:500; padding:3px 9px; border-radius:var(--r-md); border:none; background:var(--surface); box-shadow:var(--shadow-btn); color:var(--ink-2); cursor:pointer; transition:.15s}
-.copy:hover{color:var(--ink)} .copy:active{transform:scale(.95)}
 
 /* tables */
 .tablewrap{overflow-x:auto; margin:8px 0; border-radius:var(--r-lg); box-shadow:var(--shadow-hairline); -webkit-overflow-scrolling:touch}
@@ -151,11 +159,12 @@ header{
 .filechip .fn{font-weight:500; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:180px}
 .filechip .fs{color:var(--ink-3); font-family:var(--font-mono); font-size:11px; flex:0 0 auto}
 
-/* ---------- activity feed rows (inside the trace) ---------- */
-.act{align-self:stretch; display:flex; gap:9px; align-items:flex-start; font-size:12.5px; color:var(--ink-2); padding:3px 0; margin:0; width:100%}
+/* ---------- activity feed rows (inside the trace — Beautiful UI reasoning rows) ---------- */
+.act{align-self:stretch; display:flex; gap:9px; align-items:flex-start; font-size:12.5px; color:var(--ink-2); padding:3px 0; margin:0; width:100%;
+  animation:fade-blur .4s var(--ease) both}
 .act .ai{flex:0 0 auto; width:12px; display:flex; justify-content:center; padding-top:3px; font-size:10px; color:var(--accent)}
 .act .ax{flex:1; min-width:0; white-space:pre-wrap; overflow-wrap:anywhere}
-.act.assistant .ax{color:var(--ink); white-space:normal}
+.act.assistant .ax{color:var(--ink); white-space:normal; font-size:13px; line-height:1.5}
 .act.user .ax{color:var(--ink-2)}
 .act .ax p{margin:0 0 4px} .act .ax p:last-child{margin:0}
 .act .ax ul,.act .ax ol{margin:2px 0; padding-left:18px}
@@ -163,13 +172,35 @@ header{
 .act .ax code.inline{background:var(--inset); box-shadow:var(--shadow-hairline); padding:1px 4px; border-radius:var(--r-sm); font-size:.85em; font-family:var(--font-mono)}
 body.hide-activity .act{display:none}
 
-/* ---------- tool-call chips (compact inset mono chips) ---------- */
-.toolchip{align-self:flex-start; display:inline-flex; align-items:center; gap:6px; max-width:min(100%,760px); margin:2px auto 2px 0;
-  height:20px; padding:0 6px; border-radius:var(--r-sm); background:var(--inset); box-shadow:var(--shadow-hairline);
-  font-family:var(--font-mono); font-size:10.5px; color:var(--ink-2); animation:pop-in .25s var(--ease) both; overflow:hidden}
-.toolchip .tv{flex:0 0 auto; font-weight:600; color:var(--accent-ink); letter-spacing:.01em}
-.toolchip .tt{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2)}
-body.hide-activity .toolchip{display:none}
+/* ---------- tool-call chips (compact inset mono chips — Beautiful UI 05) ---------- */
+.toolrow{display:flex; flex-wrap:wrap; align-items:center; gap:5px; padding:2px 0}
+.toolchip{align-self:flex-start; display:inline-flex; align-items:center; gap:4px; max-width:100%;
+  height:18px; padding:0 3px; border-radius:5px; background:var(--inset); box-shadow:var(--shadow-hairline);
+  font-family:var(--font-mono); font-size:10.5px; color:var(--ink-2); overflow:hidden;
+  transition:background-color .15s, color .15s; animation:pop-in .25s var(--ease) both}
+.toolchip:hover{background:var(--hover); color:var(--ink)}
+.toolchip .tg{flex:0 0 auto; width:11px; height:11px; display:grid; place-items:center; color:var(--ink-3)}
+.toolchip .tg svg{width:11px; height:11px; display:block}
+.toolchip .tt{min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+body.hide-activity .toolchip,body.hide-activity .toolrow{display:none}
+
+/* ---------- task rows (Beautiful UI 06) — capsule rows with a status token ---------- */
+.tasklist{align-self:stretch; max-width:760px; width:100%; margin:4px auto; border-radius:var(--r-card); background:var(--surface); box-shadow:var(--shadow-card); overflow:hidden; animation:fade-up .34s var(--ease) both}
+.taskrow{display:flex; align-items:center; gap:10px; height:44px; padding:0 10px; transition:background-color .1s}
+.taskrow + .taskrow{border-top:1px solid var(--line)}
+.taskrow:hover{background:var(--inset)}
+.tasktok{flex:0 0 auto; width:24px; height:24px; position:relative; display:grid; place-items:center}
+.tasktok .chk{width:22px; height:22px; border-radius:50%; background:var(--green); color:#fff; display:grid; place-items:center; animation:pop-in .3s var(--ease) both}
+.tasktok .chk svg{width:13px; height:13px}
+.tasktok .ring{position:absolute; inset:0; animation:spin 1.1s linear infinite}
+.tasktok .num{position:relative; font-family:var(--font-mono); font-size:10.5px; font-weight:600; color:var(--ink); font-variant-numeric:tabular-nums}
+.taskrow .tlabel{flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:500; color:var(--ink)}
+.taskrow .tmeta{flex:0 0 auto; font-size:12.5px; color:var(--ink-2); font-variant-numeric:tabular-nums}
+.taskchip{flex:0 0 auto; display:inline-flex; align-items:center; height:22px; padding:0 8px; border-radius:999px; font-size:11.5px; font-weight:500}
+.taskchip.done{background:var(--green-tint); color:var(--green)}
+.taskchip.run{background:var(--accent-tint); color:var(--accent-ink)}
+body.hide-activity .tasklist{display:none}
+@keyframes spin{to{transform:rotate(360deg)}}
 
 /* ---------- collapsible thinking / working trace ---------- */
 .trace{align-self:stretch; max-width:760px; width:100%; margin:4px auto; border-radius:var(--r-card); background:var(--surface); box-shadow:var(--shadow-hairline); overflow:hidden; animation:fade-up .3s var(--ease) both}
@@ -183,27 +214,30 @@ body.hide-activity .toolchip{display:none}
 .trace.open .trace-b{display:block}
 body.hide-activity .trace{display:none}
 
-/* ---------- approval / ask card ---------- */
-.askwrap{align-self:stretch; max-width:760px; width:100%; margin:8px auto; animation:fade-up .34s var(--ease) both}
-.askcard{border-radius:var(--r-card); background:var(--surface); box-shadow:var(--shadow-card); overflow:hidden}
-.askcard .q{padding:15px 16px 8px; font-weight:600; font-size:15px; letter-spacing:-.015em; line-height:1.4; color:var(--ink)}
-.askcard .qi{display:flex; align-items:flex-start; gap:8px}
-.askcard .qi .spark{color:var(--accent); flex:0 0 auto; line-height:1.35}
-.askopts{display:flex; flex-direction:column; padding:0 8px 6px}
-.askopt{display:flex; align-items:center; gap:12px; padding:10px 12px; border-radius:var(--r-lg); border:none; background:transparent; color:var(--ink);
-  font:inherit; font-size:14px; text-align:left; cursor:pointer; transition:background .15s; width:100%}
-.askopt:hover{background:var(--hover)} .askopt:active{background:var(--field)}
-.askopt .ring{flex:0 0 auto; width:18px; height:18px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line-strong); transition:.15s; display:grid; place-items:center}
-.askopt .ring::after{content:""; width:8px; height:8px; border-radius:50%; background:var(--accent); transform:scale(0); transition:transform .18s var(--ease)}
-.askopt.chosen .ring{box-shadow:inset 0 0 0 1.5px var(--accent)}
-.askopt.chosen .ring::after{transform:scale(1)}
-.askopt .ol{flex:1; min-width:0}
+/* ---------- approval / ask card (Beautiful UI 04) ---------- */
+.askwrap{align-self:stretch; max-width:760px; width:100%; margin:8px auto; animation:fade-up .35s var(--ease) both}
+.askcard{max-width:340px; border-radius:var(--r-card); background:var(--surface); box-shadow:var(--shadow-card); overflow:hidden; padding:12px}
+.askhead{display:flex; align-items:flex-start; justify-content:space-between; gap:12px; margin-bottom:8px}
+.askhead .qq{font-size:13px; font-weight:600; line-height:1.4; color:var(--ink); letter-spacing:-.01em}
+.askx{flex:0 0 auto; width:28px; height:28px; margin:-6px -6px 0 0; border:none; border-radius:var(--r-lg); background:transparent;
+  color:var(--ink-3); font-size:18px; line-height:1; display:grid; place-items:center; cursor:pointer; transition:.1s}
+.askx:hover{background:var(--hover); color:var(--ink-2)}
+.askopts{display:flex; flex-direction:column; gap:1px}
+.askopt{display:flex; align-items:center; gap:8px; margin:0 -6px; padding:4px 6px; border-radius:var(--r-lg); border:none; background:transparent; color:var(--ink);
+  font:inherit; font-size:13px; text-align:left; cursor:pointer; transition:background .1s; width:calc(100% + 12px)}
+.askopt:hover{background:var(--hover)}
+.askopt .ring{flex:0 0 auto; width:16px; height:16px; border-radius:50%; box-shadow:inset 0 0 0 1.5px var(--line-strong);
+  transition:background .2s, box-shadow .2s; display:grid; place-items:center}
+.askopt .ring .dot{width:6px; height:6px; border-radius:50%; background:var(--canvas); transform:scale(0); transition:transform .2s var(--ease)}
+.askopt.chosen .ring{background:var(--ink); box-shadow:none}
+.askopt.chosen .ring .dot{transform:scale(1)}
+.askopt .ol{flex:1; min-width:0; color:var(--ink-2); transition:color .2s}
+.askopt.chosen .ol{color:var(--ink)}
+.askopt.askcustom .ring{box-shadow:none; background:transparent}
+.askopt.askcustom .ol{color:var(--ink-3)}
 .askcard.answered .askopt{cursor:default; pointer-events:none}
-.askcard.answered .askopt:not(.chosen){opacity:.5}
-.askcard.answered .askopt:not(.chosen) .ring{opacity:.5}
-.askcard .askfoot{display:flex; align-items:center; gap:7px; padding:9px 16px 13px; font-size:12px; color:var(--ink-3)}
-.askcard .askfoot .ft{flex:1; min-width:0}
-.askcard.answered .askfoot .ft{color:var(--green)}
+.askcard.answered .askopt:not(.chosen){opacity:.45}
+.askcard.answered .askcustom{display:none}
 
 /* ---------- diff blocks ---------- */
 .dl{display:block; padding:0 13px; margin:0 -13px}
@@ -212,20 +246,20 @@ body.hide-activity .trace{display:none}
 
 /* ---------- thinking indicator (pixel-grid + shimmer + mono elapsed) ---------- */
 .think{display:inline-flex; align-items:center; gap:10px; padding:6px 0}
-.pixgrid{display:grid; grid-template-columns:repeat(3,4px); gap:2px; flex:0 0 auto}
+.pixgrid{display:grid; grid-template-columns:repeat(3,4px); gap:1.5px; flex:0 0 auto}
 .pixgrid i{width:4px; height:4px; border-radius:1px; background:var(--ink); opacity:.15; animation:pixel-on .65s ease-in-out infinite}
-.pixgrid i:nth-child(1){animation-delay:0ms} .pixgrid i:nth-child(2){animation-delay:80ms}
-.pixgrid i:nth-child(3){animation-delay:160ms} .pixgrid i:nth-child(4){animation-delay:80ms}
-.pixgrid i:nth-child(5){animation-delay:160ms} .pixgrid i:nth-child(6){animation-delay:240ms}
-.pixgrid i:nth-child(7){animation-delay:160ms} .pixgrid i:nth-child(8){animation-delay:240ms}
-.pixgrid i:nth-child(9){animation-delay:320ms}
+.pixgrid i:nth-child(1){animation-delay:90ms} .pixgrid i:nth-child(2){animation-delay:180ms}
+.pixgrid i:nth-child(3){animation-delay:270ms} .pixgrid i:nth-child(4){animation-delay:0ms}
+.pixgrid i:nth-child(5){animation-delay:90ms} .pixgrid i:nth-child(6){animation-delay:180ms}
+.pixgrid i:nth-child(7){animation-delay:90ms} .pixgrid i:nth-child(8){animation-delay:180ms}
+.pixgrid i:nth-child(9){animation-delay:270ms}
 .think .lbl{font-weight:500; font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
   background:linear-gradient(90deg,var(--ink-3) 35%,var(--ink) 50%,var(--ink-3) 65%);
   background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:shimmer-text 1.4s linear infinite}
-.think .elapsed{font-family:var(--font-mono); font-size:11px; color:var(--ink-3); flex:0 0 auto}
+.think .elapsed{font-family:var(--font-mono); font-size:12px; color:var(--ink-3); flex:0 0 auto; font-variant-numeric:tabular-nums}
 
-/* streaming caret */
-.stream-caret{display:inline-block; width:2px; height:1.02em; vertical-align:text-bottom; margin-left:2px; border-radius:1px; background:var(--accent); animation:caret-blink 1s step-end infinite}
+/* streaming caret — Beautiful UI 03: w-[3px] h-3 rounded-full bg-accent */
+.stream-caret{display:inline-block; width:3px; height:.86em; vertical-align:text-bottom; margin-left:3px; border-radius:999px; background:var(--accent); animation:caret-blink 1s step-end infinite}
 
 /* ---------- empty state ---------- */
 .empty{margin:16vh auto 0; text-align:center; color:var(--ink-2); max-width:320px; padding:0 20px}
@@ -303,6 +337,14 @@ body.hide-activity .trace{display:none}
 .switch.on::after{left:20px}
 .hint{font-size:12px; color:var(--ink-3); margin:2px 0 14px; line-height:1.55}
 
+/* ---------- segmented control (Beautiful UI 09) ---------- */
+.seg{display:inline-flex; align-items:center; background:var(--field); border-radius:999px; padding:2px; flex:0 0 auto}
+.seg button{border:none; background:transparent; color:var(--ink-3); font:inherit; font-weight:500; font-size:11.5px; line-height:1.4;
+  padding:2px 10px; border-radius:999px; cursor:pointer; transition:background-color .15s, color .15s, box-shadow .15s}
+.seg button.on{background:var(--surface); color:var(--ink); box-shadow:var(--shadow-btn)}
+.segrow{display:flex; align-items:center; justify-content:space-between; gap:10px; padding:12px 14px; background:var(--inset);
+  box-shadow:var(--shadow-hairline); border-radius:var(--r-lg); margin-bottom:10px; font-weight:500; font-size:14px; color:var(--ink)}
+
 /* ---------- toast ---------- */
 .toast{position:fixed; left:50%; bottom:calc(92px + var(--safe-b)); transform:translateX(-50%) translateY(20px); background:var(--ink); color:var(--page); padding:9px 16px; border-radius:999px; font-size:13px; font-weight:500; opacity:0; pointer-events:none; transition:.25s; z-index:30}
 .toast.show{opacity:1; transform:translateX(-50%) translateY(0)}
@@ -323,6 +365,8 @@ body.hide-activity .trace{display:none}
 @keyframes caret-blink{0%,100%{opacity:1} 50%{opacity:0}}
 @keyframes fade-up{0%{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
 @keyframes pop-in{0%{opacity:0; transform:scale(.97)} to{opacity:1; transform:none}}
+/* streaming reply blocks fade in from blur — Beautiful UI 03 streaming text */
+@keyframes fade-blur{0%{opacity:0; filter:blur(5px); transform:translateY(6px) scale(.99)} to{opacity:1; filter:blur(0); transform:none}}
 
 ::selection{background:var(--accent-tint)}
 #scroll::-webkit-scrollbar{width:7px} #scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--ink-3) 45%, transparent); border-radius:4px}

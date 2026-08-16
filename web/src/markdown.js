@@ -52,6 +52,30 @@ function mdAlign(c) {
     r = c.charAt(c.length - 1) === ":";
   return l && r ? "center" : r ? "right" : l ? "left" : "";
 }
+// Friendly display names for the code header's language label.
+var LANG_NAMES = {
+  js: "JavaScript", jsx: "JavaScript", ts: "TypeScript", tsx: "TypeScript",
+  py: "Python", rb: "Ruby", go: "Go", rs: "Rust", java: "Java", c: "C",
+  cpp: "C++", cs: "C#", php: "PHP", sh: "Shell", bash: "Shell", zsh: "Shell",
+  json: "JSON", yaml: "YAML", yml: "YAML", toml: "TOML", html: "HTML",
+  css: "CSS", scss: "SCSS", sql: "SQL", md: "Markdown", diff: "Diff",
+  xml: "XML", swift: "Swift", kt: "Kotlin", txt: "Text",
+};
+var COPY_ICON =
+  '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2.5"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+function codeBar(lang) {
+  // Beautiful UI 17 header: mono filename + language name, Copy button.
+  var key = (lang || "").toLowerCase();
+  var name = key || "code";
+  var pretty = LANG_NAMES[key] || (key ? key.toUpperCase() : "");
+  return (
+    '<div class="codebar"><span class="cbl"><span class="cbname">' +
+    esc(name) +
+    "</span>" +
+    (pretty ? '<span class="cblang">' + esc(pretty) + "</span>" : "") +
+    '</span><button class="copy">' + COPY_ICON + '<span class="copylbl">Copy</span></button></div>'
+  );
+}
 function renderCodeBlock(lines, lang) {
   // lines are already HTML-escaped. A ```diff fence colors +/- lines (the
   // prefix char stays in the text so the Copy button yields a real diff).
@@ -65,9 +89,9 @@ function renderCodeBlock(lines, lang) {
         return '<span class="dl ' + c + '">' + (ln.length ? ln : " ") + "</span>";
       })
       .join("");
-    return '<div class="codewrap"><button class="copy">Copy</button><pre class="diff"><code>' + body + "</code></pre></div>";
+    return '<div class="codewrap">' + codeBar(lang) + '<pre class="diff"><code>' + body + "</code></pre></div>";
   }
-  return '<div class="codewrap"><button class="copy">Copy</button><pre><code>' + lines.join("\n") + "</code></pre></div>";
+  return '<div class="codewrap">' + codeBar(lang) + "<pre><code>" + lines.join("\n") + "</code></pre></div>";
 }
 export function renderMarkdown(text) {
   var out = [];

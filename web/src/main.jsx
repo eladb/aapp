@@ -148,46 +148,53 @@ function downscaleImage(file, maxDim, quality) {
 // ============================================================================
 //  Presentational components
 // ============================================================================
+// A tool-call chip — Beautiful UI 05: compact inset mono chip with a leading glyph.
 function ToolChip({ m }) {
   const txt = (m.text || "").trim();
-  const sp = txt.search(/[\s:]/);
-  const verb = sp > 0 ? txt.slice(0, sp) : txt;
-  const rest = sp > 0 ? txt.slice(sp).replace(/^[\s:]+/, "") : "";
   return (
-    <div className="toolchip">
-      <span className="tv">{verb || "tool"}</span>
-      {rest ? <span className="tt">{rest}</span> : null}
+    <span className="toolchip" title={txt}>
+      <span className="tg" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M9 6l6 6-6 6" /></svg>
+      </span>
+      <span className="tt">{txt || "tool"}</span>
+    </span>
+  );
+}
+// An assistant reasoning step — Beautiful UI 02/07 crisp reasoning text.
+function ReasonRow({ m }) {
+  return (
+    <div className="act assistant">
+      <div className="ax" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text || "") }} />
     </div>
   );
 }
-function ActivityLine({ m }) {
-  const kind = m.kind || "tool";
-  if (kind === "tool") return <ToolChip m={m} />;
-  return (
-    <div className={"act " + kind}>
-      <div className="ai">{kind === "assistant" ? "◈" : ""}</div>
-      {kind === "assistant"
-        ? <div className="ax" dangerouslySetInnerHTML={{ __html: renderMarkdown(m.text || "") }} />
-        : <div className="ax">{m.text}</div>}
-    </div>
-  );
-}
-// Consecutive activity collapses into one "Working · N steps" trace that stays
-// expanded while live and auto-collapses when the reply lands.
+// Consecutive activity collapses into one "Thinking · N steps" trace that stays
+// expanded while live and auto-collapses when the reply lands. Runs of tool
+// calls flow together as chips (05); assistant notes render as reasoning rows.
 function Trace({ items, live }) {
   const [open, setOpen] = useState(live);
   const prev = useRef(live);
   useEffect(() => { if (prev.current !== live) { prev.current = live; setOpen(live); } }, [live]);
   const n = items.length;
+  const rows = [];
+  for (let i = 0; i < items.length; ) {
+    const it = items[i];
+    if ((it.kind || "tool") === "tool") {
+      const chips = []; let j = i;
+      while (j < items.length && (items[j].kind || "tool") === "tool") { chips.push(items[j]); j++; }
+      rows.push(<div className="toolrow" key={"tr-" + chips[0].mid}>{chips.map((c) => <ToolChip key={c.mid} m={c} />)}</div>);
+      i = j;
+    } else { rows.push(<ReasonRow key={it.mid} m={it} />); i++; }
+  }
   return (
     <div className={"trace" + (open ? " open" : "")}>
       <div className="trace-h" onClick={() => setOpen((o) => !o)}>
         <span className="spark">✦</span>
-        <span className="tlbl">Working</span>
+        <span className="tlbl">{live ? "Thinking" : "Worked"}</span>
         <span className="tn">{n + (n === 1 ? " step" : " steps")}</span>
         <span className="chev">⌄</span>
       </div>
-      <div className="trace-b">{items.map((m) => <ActivityLine key={m.mid} m={m} />)}</div>
+      <div className="trace-b">{rows}</div>
     </div>
   );
 }
@@ -199,26 +206,31 @@ function MessageRow({ m }) {
     </div>
   );
 }
-function AskCard({ m, onChoose }) {
-  const foot = m.answered
-    ? "✓ Answered — " + (m.chosen || "")
-    : m.options && m.options.length
-    ? (m.freeText ? "Tap an option, or reply below" : "Tap an option")
-    : "Reply below to answer";
+function AskCard({ m, onChoose, onCustom, onDismiss }) {
+  if (m.dismissed) return null;
   return (
     <div className="askwrap" data-mid={m.mid}>
       <div className={"askcard" + (m.answered ? " answered" : "")}>
-        <div className="q"><span className="qi"><span className="spark">✦</span><span>{m.text || ""}</span></span></div>
+        <div className="askhead">
+          <span className="qq">{m.text || ""}</span>
+          {!m.answered ? (
+            <button type="button" className="askx" aria-label="Dismiss" onClick={() => onDismiss(m)}>×</button>
+          ) : null}
+        </div>
         <div className="askopts">
           {(m.options || []).map((o, i) => (
             <button key={i} type="button"
               className={"askopt" + (m.answered && m.chosen === o.value ? " chosen" : "")}
               onClick={() => { if (!m.answered) onChoose(m, o.value); }}>
-              <span className="ring" /><span className="ol">{o.label}</span>
+              <span className="ring"><span className="dot" /></span><span className="ol">{o.label}</span>
             </button>
           ))}
+          {m.freeText !== false ? (
+            <button type="button" className="askopt askcustom" onClick={() => { if (!m.answered) onCustom(); }}>
+              <span className="ring" /><span className="ol">Type something…</span>
+            </button>
+          ) : null}
         </div>
-        <div className="askfoot"><span className="ft">{foot}</span></div>
       </div>
     </div>
   );
@@ -436,6 +448,14 @@ function App() {
     m.answered = true; m.chosen = val; forceRender(); save(); buzz(8);
     submitText(val);
   }
+  function onAskDismiss(m) {
+    if (m.answered) return;
+    m.dismissed = true; forceRender(); save();
+  }
+  function focusComposer() {
+    const el = inputRef.current; if (!el) return;
+    try { el.focus(); scrollToBottom(true); } catch (e) {}
+  }
 
   // ---------- sending ----------
   async function submitText(text) {
@@ -486,10 +506,13 @@ function App() {
   function onListClick(e) {
     const btn = e.target.closest && e.target.closest(".copy");
     if (btn) {
-      const code = btn.parentElement.querySelector("code");
+      const wrap = btn.closest(".codewrap");
+      const code = wrap ? wrap.querySelector("code") : null;
       copyText(code ? code.textContent : "");
-      btn.textContent = "Copied!";
-      setTimeout(function () { btn.textContent = "Copy"; }, 1200);
+      btn.classList.add("copied");
+      const lbl = btn.querySelector(".copylbl") || btn;
+      lbl.textContent = "Copied!";
+      setTimeout(function () { btn.classList.remove("copied"); lbl.textContent = "Copy"; }, 1200);
     }
   }
 
@@ -681,7 +704,7 @@ function App() {
       if (dk !== lastDay) { lastDay = dk; blocks.push(<div className="daysep" key={"day-" + m.mid}>{fmtDay(m.ts)}</div>); }
     }
     if (m.type === "system") blocks.push(<div className="sys" key={m.mid} data-mid={m.mid}>{m.text}</div>);
-    else if (m.type === "ask") blocks.push(<AskCard key={m.mid} m={m} onChoose={onAskChoose} />);
+    else if (m.type === "ask") blocks.push(<AskCard key={m.mid} m={m} onChoose={onAskChoose} onCustom={focusComposer} onDismiss={onAskDismiss} />);
     else blocks.push(<MessageRow key={m.mid} m={m} />);
     i++;
   }
@@ -724,7 +747,7 @@ function App() {
       <div className="composer">
         <div className="composerbar">
           <label className="attachbtn" htmlFor="fileInput" aria-label="Attach a photo or file">
-            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
           </label>
           <input type="file" id="fileInput" className="filein" disabled={!hasTopic}
             onChange={(e) => { const files = Array.prototype.slice.call(e.target.files || []); e.target.value = ""; files.forEach(function (f) { handleFile(f); }); }} />
@@ -750,7 +773,12 @@ function App() {
           <button className="btn primary" onClick={doShare}>Share link</button>
           <button className="btn" onClick={() => { copyText(location.href); toast("Link copied"); }}>Copy</button>
         </div>
-        <div className="toggle" onClick={toggleActivity}>Show session activity<span className={"switch" + (showActivity ? " on" : "")} /></div>
+        <div className="segrow">Session activity
+          <span className="seg" role="tablist">
+            <button type="button" role="tab" className={showActivity ? "on" : ""} onClick={() => { if (!showActivity) toggleActivity(); }}>Shown</button>
+            <button type="button" role="tab" className={!showActivity ? "on" : ""} onClick={() => { if (showActivity) toggleActivity(); }}>Hidden</button>
+          </span>
+        </div>
         <div className="hint">The activity feed shows the agent's steps and tool calls from this session. Off hides them on this device only.</div>
         <div className="hint">On iPhone: tap the <b>Share</b> icon in Safari, then <b>Add to Home Screen</b> to install this chat as an app.</div>
         <div className="row-btns">
