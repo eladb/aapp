@@ -47,7 +47,11 @@
 }
 
 *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-html{height:100%; -webkit-text-size-adjust:100%}
+/* html fills the (stable) layout viewport and paints the page color, so the
+   home-indicator / dvh-excluded strip beneath #root in an installed iOS PWA
+   is page-colored instead of a bare white band. #root keeps dvh sizing so the
+   keyboard still shrinks the layout. */
+html{height:100%; background:var(--page); -webkit-text-size-adjust:100%}
 body{
   margin:0; color:var(--ink); background-color:var(--page);
   font:14px/1.5 var(--font-ui);
