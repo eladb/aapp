@@ -23,8 +23,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 /* ==========================================================================
    Beautiful UI re-skin (beautifului.dev) — neutral surfaces, electric-blue
    accent, hairline borders drawn as box-shadow, JetBrains-mono numbers, a
-   fixed 45° hairline hatch, pixel-grid thinking loader, chip tool-calls and a
-   radio approval card. Dark-first, follows the system color scheme.
+   pixel-grid thinking loader, chip tool-calls and a radio approval card.
+   The standard Beautiful UI theme, no decorative extras. Dark-first,
+   follows the system color scheme.
    Tokens copied verbatim from Beautiful UI's compiled CSS. Fonts (Inter +
    JetBrains Mono) are inlined by build.mjs from src/fonts.css.
    ========================================================================== */
@@ -37,7 +38,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
   --accent:#0285ff; --accent-ink:#0170dd; --accent-tint:#e9f3ff;
   --green:#189a4d; --orange:#ef720c; --red:#e3474c;
   --green-tint:#e8f5ed; --red-tint:#fcecec;
-  --stripe:#49494913;
   --code-bg:#f7f8f9; --code-fg:#1f2124;
   --shadow-hairline:0 0 0 1px var(--line);
   --shadow-btn:0 0 0 1px var(--line-strong),0 1px 2px #1018280d;
@@ -59,7 +59,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
     --accent:#3d9aff; --accent-ink:#7ec0ff; --accent-tint:#3d9aff29;
     --green:#3dbb72; --orange:#f68f3c; --red:#ee5c61;
     --green-tint:#3dbb7224; --red-tint:#ee5c6124;
-    --stripe:#ffffff0e;
     --code-bg:#1a1b1d; --code-fg:#e6e8ea;
     --shadow-btn:0 0 0 1px var(--line-strong),0 1px 2px #0000004d;
     --shadow-card:0 0 0 1px var(--line),0 1px 2px #0003,0 2px 6px #0003;
@@ -362,7 +361,7 @@ body.hide-activity .trace{display:none}
 .dl.add{background:color-mix(in srgb, var(--green) 16%, transparent); color:var(--green)}
 .dl.del{background:color-mix(in srgb, var(--red) 16%, transparent); color:var(--red)}
 
-/* ---------- thinking indicator (pixel-grid + shimmer + mono elapsed) ---------- */
+/* ---------- thinking indicator (pixel-grid + mono elapsed) ---------- */
 .think{display:inline-flex; align-items:center; gap:10px; padding:6px 0}
 .pixgrid{display:grid; grid-template-columns:repeat(3,4px); gap:1.5px; flex:0 0 auto}
 .pixgrid i{width:4px; height:4px; border-radius:1px; background:var(--ink); opacity:.15; animation:pixel-on .65s ease-in-out infinite}
@@ -489,11 +488,9 @@ body.hide-activity .trace{display:none}
 
 /* ---------- keyframes (Beautiful UI) ---------- */
 @keyframes pixel-on{0%,100%{opacity:.15} 18%,42%{opacity:1} 62%{opacity:.15}}
-@keyframes shimmer-text{0%{background-position:150% 0} to{background-position:-50% 0}}
 @keyframes caret-blink{0%,100%{opacity:1} 50%{opacity:0}}
 @keyframes fade-up{0%{opacity:0} to{opacity:1}}
 @keyframes pop-in{0%{opacity:0; transform:scale(.97)} to{opacity:1; transform:none}}
-/* streaming reply blocks fade in from blur — Beautiful UI 03 streaming text */
 @keyframes fade-blur{0%{opacity:0} to{opacity:1}}
 
 ::selection{background:var(--accent-tint)}
