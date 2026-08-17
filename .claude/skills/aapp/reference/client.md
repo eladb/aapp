@@ -6,10 +6,9 @@ reassembles multi-part messages, tracks agent presence, and lets you publish
 messages, attachments, and sync requests. You bring the UI — or none at all (it
 runs headless in Node).
 
-The phone app is itself built on this client: `app.html` inlines `aapp-client.js`
-verbatim (to stay a single self-contained file) and wires the UI to its events.
-That inlined copy is regenerated from this file by `scripts/sync-client.py
---write` and verified in CI by `--check`, so the two never drift.
+The phone app is itself built on this client: `app.html` is bundled from
+[`web/`](../../../../web/) by esbuild, and its wire client is derived from this
+file at build time (so the bundled copy can never drift from the tested source).
 
 It mirrors the reference implementations byte-for-byte: same envelope shape,
 same chunking budget (`MAX_ENVELOPE_BYTES = 3000`, per-part overhead `+8`), same

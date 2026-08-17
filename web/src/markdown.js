@@ -199,7 +199,10 @@ export function renderMarkdown(text) {
       !/^\s*```/.test(lines[i]) &&
       !/^\s*(#{1,3})\s/.test(lines[i]) &&
       !/^\s*[-*]\s/.test(lines[i]) &&
-      !/^\s*\d+\.\s/.test(lines[i])
+      !/^\s*\d+\.\s/.test(lines[i]) &&
+      // stop if this line begins a GFM table (pipe row + delimiter row), so a
+      // table glued directly under a line of text still renders as a table
+      !(lines[i].indexOf("|") >= 0 && i + 1 < lines.length && mdIsSep(lines[i + 1]))
     ) {
       para.push(lines[i]);
       i++;

@@ -83,12 +83,13 @@ c.start();
 await c.sendText("hello from my own client");
 ```
 
-The phone app itself is built on this client: `app.html` carries a **verbatim
-inline copy** of `aapp-client.js` (so it stays one self-contained file that works
-from any raw/static host) and its script is just the UI wired to the client's
-events. Edit the library, then run
-`scripts/sync-client.py --write` to refresh the inlined copy; CI
-(`scripts/sync-client.py --check`) fails the deploy if the two ever drift.
+The phone app itself is built on this client: `app.html` is a **React +
+Beautiful UI** app whose source lives in [`web/`](web/) and is bundled by
+esbuild — together with the wire client (derived from `aapp-client.js` at build
+time), the CSS, and web fonts — into one self-contained file that installs as a
+PWA and works from any raw/static host. Edit `web/`, then rebuild with
+`AAPP_OUT=.claude/skills/aapp/app.html node web/build.mjs`; CI rebuilds and fails
+if the committed `app.html` doesn't match (the drift guard).
 
 It speaks the exact same wire protocol as `bridge.py`, so every client on a
 topic interoperates. Full API in
@@ -96,9 +97,9 @@ topic interoperates. Full API in
 
 ## Tests
 
-[`test/`](test/) has a library unit test, an app-script integration test (run in
-a Node `vm`, no browser), and a browser end-to-end that drives the real
-`app.html` in Chromium against the real `bridge.py` over a local
+[`test/`](test/) has a library unit test, a markdown-renderer test (both run in
+a Node `vm`, no browser), a build/drift guard, and a browser end-to-end that
+drives the real `app.html` in Chromium against the real `bridge.py` over a local
 ntfy-compatible relay. Run the lot with `test/run.sh` (see
 [`test/README.md`](test/README.md)); CI runs them on every push and PR. Tests
 live at the repo root, so `install.sh` never ships them into a project.
@@ -108,11 +109,11 @@ live at the repo root, so `install.sh` never ships them into a project.
 | File | Role |
 |------|------|
 | `.claude/skills/aapp/SKILL.md` | Instructions Claude follows |
-| `.claude/skills/aapp/app.html` | The phone app (single self-contained file; built on the client) |
+| `.claude/skills/aapp/app.html` | The phone app — one self-contained file, built from `web/` |
+| `web/` | React + Beautiful UI source for `app.html` (esbuild → single file) |
 | `.claude/skills/aapp/aapp-client.js` | Reusable JS protocol client (browser + Node, no deps) |
 | `.claude/skills/aapp/scripts/bridge.py` | Agent-side relay client (stdlib only) |
 | `.claude/skills/aapp/scripts/serve.py` | Optional local server for tunnel hosting |
-| `.claude/skills/aapp/scripts/sync-client.py` | Keeps app.html's inlined client copy in sync (`--write`/`--check`) |
 | `.claude/skills/aapp/reference/protocol.md` | Wire protocol (v1) |
 | `.claude/skills/aapp/reference/client.md` | `aapp-client.js` API + examples |
 | `.claude/skills/aapp/reference/hosting.md` | Every hosting option |

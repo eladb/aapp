@@ -207,5 +207,5 @@ feed. Consequences:
 - Reusable client: `aapp-client.js` — the phone-side protocol logic (transport,
   de-dupe, reassembly, presence, chunked send) with no DOM. Browser or Node. See
   [`client.md`](client.md).
-- Phone side: `app.html` is the UI built on `aapp-client.js` (inlined verbatim so
-  the file stays self-contained; kept in sync by `scripts/sync-client.py`).
+- Phone side: `app.html` is the UI built on `aapp-client.js`, bundled from the
+  React source in `web/` by esbuild into one self-contained file.

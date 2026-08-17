@@ -1,17 +1,16 @@
 "use strict";
-// Regression tests for app.html's markdown-lite renderer, focused on GFM tables.
-// The renderer lives inside the app's IIFE (not exported), so we slice the pure
-// functions out of app.html and eval them in isolation. Run: `node test/markdown.test.js`.
+// Regression tests for the app's markdown-lite renderer, focused on GFM tables.
+// The renderer is the ES module web/src/markdown.js that main.jsx bundles into
+// the app; we load it here by stripping its `export` keywords and evaluating it
+// in isolation, so the test stays dependency-free. Run: `node test/markdown.test.js`.
 const fs = require("fs");
 const path = require("path");
 const assert = require("assert");
 const vm = require("vm");
 
-const html = fs.readFileSync(path.join(__dirname, "..", ".claude", "skills", "aapp", "app.html"), "utf8");
-const start = html.indexOf("function esc(");
-const end = html.indexOf("// ---------- time ----------");
-assert.ok(start >= 0 && end > start, "could not locate the markdown functions in app.html");
-const src = html.slice(start, end) + "\n;this.renderMarkdown = renderMarkdown;";
+const modPath = path.join(__dirname, "..", "web", "src", "markdown.js");
+const src = fs.readFileSync(modPath, "utf8").replace(/^export\s+/gm, "") +
+  "\n;this.renderMarkdown = renderMarkdown;";
 const sandbox = {};
 vm.runInNewContext(src, sandbox);
 const renderMarkdown = sandbox.renderMarkdown;

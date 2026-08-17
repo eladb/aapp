@@ -1,10 +1,11 @@
 # aapp tests
 
-Tests for the phone app (`app.html`), the extracted client (`aapp-client.js`),
-and the agent bridge (`bridge.py`). Nothing here ships to installs — `install.sh`
-copies only `.claude/skills/aapp`, not this directory.
+Tests for the phone app (`app.html`, built from `web/`), the extracted client
+(`aapp-client.js`), and the agent bridge (`bridge.py`). Nothing here ships to
+installs — `install.sh` copies only `.claude/skills/aapp`, not this directory.
 
-Run everything:
+Run everything (rebuilds `app.html` from `web/` and checks it hasn't drifted,
+then runs the unit tests and the browser e2e):
 
 ```bash
 test/run.sh
@@ -13,7 +14,7 @@ test/run.sh
 | File | What it checks | Needs |
 |------|----------------|-------|
 | `client.test.js` | `aapp-client.js` in isolation: link parsing, byte-aware chunking + reassembly (incl. multibyte), inbound de-dupe/dispatch, presence, bounded pruning, send/publish/sync. | `node` |
-| `app.test.js` | `app.html`'s script wired to the client, run in a Node `vm` against a DOM/fetch shim: load, boot, an inbound agent message (render + presence), optimistic send, boot sync. | `node` |
+| `markdown.test.js` | `web/src/markdown.js` renderer in a Node `vm`, focused on GFM tables (incl. a table glued directly under text). | `node` |
 | `e2e.test.js` | The real `app.html` in headless Chromium and the real `bridge.py`, exchanging messages both ways, plus markdown rendering and history-replay on reload. | `node`, `playwright` + a Chromium |
 | `mini-ntfy.js` | Not a test — a tiny in-memory ntfy-compatible relay used by `e2e.test.js` (and runnable standalone: `MINI_PORT=8799 node test/mini-ntfy.js`). | `node` |
 
@@ -30,7 +31,7 @@ the browser only ever talks to localhost.)
 
 ```bash
 node test/client.test.js
-node test/app.test.js
+node test/markdown.test.js
 node test/e2e.test.js          # writes a screenshot to $E2E_SHOT or the temp dir
 ```
 

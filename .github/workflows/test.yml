@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
 
 jobs:
-  # Fast, dependency-free checks: the inline-sync guard and the two Node tests
-  # (library unit + app-script integration). No browser required.
+  # Fast, browser-free checks: the app builds reproducibly from web/ (and the
+  # committed app.html matches that build — the drift guard that replaced the
+  # old inline-client sync check), plus the two Node unit tests.
   unit:
     runs-on: ubuntu-latest
     steps:
@@ -16,15 +17,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.x"
-      - name: Inline client sync check
-        run: python3 .claude/skills/aapp/scripts/sync-client.py --check
+      - name: Build app and verify committed app.html is in sync
+        # app.html is the esbuild bundle of web/ (React + Beautiful UI). The
+        # lockfile pins esbuild, so the build is deterministic: a fresh build
+        # must byte-match the committed file, or someone edited web/ without
+        # rebuilding. Run `AAPP_OUT=…/app.html node web/build.mjs` to refresh.
+        run: |
+          cd web && npm ci && AAPP_OUT="$GITHUB_WORKSPACE/.claude/skills/aapp/app.html" node build.mjs
+          cd "$GITHUB_WORKSPACE" && git diff --exit-code .claude/skills/aapp/app.html
       - name: Library unit test
         run: node test/client.test.js
-      - name: App-script integration test
-        run: node test/app.test.js
+      - name: Markdown renderer test
+        run: node test/markdown.test.js
 
   # Full browser end-to-end: real app.html in Chromium + real bridge.py over a
   # local ntfy-compatible relay. Kept separate so a browser/env issue never

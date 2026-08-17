@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Run the full aapp test suite: the inline-sync check, the two Node tests (no
-# deps, no browser), and the browser end-to-end (self-orchestrating; skips
-# cleanly if Playwright isn't installed).
+# Run the full aapp test suite: rebuild app.html from web/ and check it matches
+# the committed file (drift guard), the two Node unit tests (no deps, no
+# browser), and the browser end-to-end (self-orchestrating; skips cleanly if
+# Playwright isn't installed).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-echo "== inline client sync check =="
-python3 .claude/skills/aapp/scripts/sync-client.py --check
+echo "== build app.html from web/ and check for drift =="
+( cd web && AAPP_OUT="$PWD/../.claude/skills/aapp/app.html" node build.mjs )
+git diff --exit-code .claude/skills/aapp/app.html \
+  || { echo "app.html is out of date — commit the rebuilt file"; exit 1; }
 
 echo "== client.test.js (library unit) =="
 node test/client.test.js
 
 echo "== markdown.test.js (renderer / GFM tables) =="
 node test/markdown.test.js
-
-echo "== app.test.js (app-script integration, no browser) =="
-node test/app.test.js
 
 echo "== e2e.test.js (browser <-> bridge over a local relay) =="
 node test/e2e.test.js

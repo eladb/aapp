@@ -15,9 +15,6 @@ on:
                # the main run via the shared concurrency group.
     paths:
       - .claude/skills/aapp/app.html
-      - .claude/skills/aapp/app-next.html
-      - .claude/skills/aapp/aapp-client.js
-      - .claude/skills/aapp/scripts/sync-client.py
       - site/**
       - install.sh
       - .github/workflows/pages.yml
@@ -40,20 +37,16 @@ jobs:
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-      - name: Verify app.html inline client matches aapp-client.js
-        # app.html carries a verbatim inline copy of aapp-client.js (it must stay
-        # a single self-contained file). Fail the deploy if the two have drifted;
-        # run scripts/sync-client.py --write to regenerate.
-        run: python3 .claude/skills/aapp/scripts/sync-client.py --check
       - name: Assemble site
         run: |
           mkdir -p _site
           cp -r site/. _site/                            # landing page + assets (screenshot) + install.md
-          cp .claude/skills/aapp/app.html _site/app.html # current
-          cp .claude/skills/aapp/app-next.html _site/next.html  # React + Beautiful UI preview (unstamped => auto-update off)
+          cp .claude/skills/aapp/app.html _site/app.html # the phone app (React + Beautiful UI, built from web/)
+          cp _site/app.html _site/next.html              # alias for older preview links (copied before stamping => auto-update off)
           cp install.sh _site/install.sh                 # publish the installer at aapp.run/install.sh
           # Stamp the build id (commit sha) into the app and a sibling
           # version.json so the client can detect a newer deploy and auto-update.
+          # next.html is copied first and left unstamped, so it never reload-loops.
           BUILD="${GITHUB_SHA}"
           sed -i "s/__AAPP_BUILD__/${BUILD}/g" _site/app.html
           printf '{"build":"%s"}\n' "${BUILD}" > _site/version.json
