@@ -73,10 +73,6 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Ar
 html{height:100%; -webkit-text-size-adjust:100%}
 body{
   margin:0; color:var(--ink); background-color:var(--page);
-  /* signature Beautiful UI 45° hairline hatch, fixed to the viewport */
-  background-image:repeating-linear-gradient(-45deg,
-    transparent 0, transparent 7px, var(--stripe) 7px, var(--stripe) 8px);
-  background-attachment:fixed;
   font:14px/1.5 var(--font-ui);
   font-feature-settings:"cv11","ss01"; letter-spacing:-0.01em;
   overflow:hidden; overscroll-behavior-y:none;
@@ -375,9 +371,7 @@ body.hide-activity .trace{display:none}
 .pixgrid i:nth-child(5){animation-delay:90ms} .pixgrid i:nth-child(6){animation-delay:180ms}
 .pixgrid i:nth-child(7){animation-delay:90ms} .pixgrid i:nth-child(8){animation-delay:180ms}
 .pixgrid i:nth-child(9){animation-delay:270ms}
-.think .lbl{font-weight:500; font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  background:linear-gradient(90deg,var(--ink-3) 35%,var(--ink) 50%,var(--ink-3) 65%);
-  background-size:200% 100%; -webkit-background-clip:text; background-clip:text; color:transparent; animation:shimmer-text 1.4s linear infinite}
+.think .lbl{font-weight:500; font-size:13px; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--ink-2)}
 .think .elapsed{font-family:var(--font-mono); font-size:12px; color:var(--ink-3); flex:0 0 auto; font-variant-numeric:tabular-nums}
 
 /* streaming caret — Beautiful UI 03: w-[3px] h-3 rounded-full bg-accent */
@@ -497,10 +491,10 @@ body.hide-activity .trace{display:none}
 @keyframes pixel-on{0%,100%{opacity:.15} 18%,42%{opacity:1} 62%{opacity:.15}}
 @keyframes shimmer-text{0%{background-position:150% 0} to{background-position:-50% 0}}
 @keyframes caret-blink{0%,100%{opacity:1} 50%{opacity:0}}
-@keyframes fade-up{0%{opacity:0; transform:translateY(8px)} to{opacity:1; transform:none}}
+@keyframes fade-up{0%{opacity:0} to{opacity:1}}
 @keyframes pop-in{0%{opacity:0; transform:scale(.97)} to{opacity:1; transform:none}}
 /* streaming reply blocks fade in from blur — Beautiful UI 03 streaming text */
-@keyframes fade-blur{0%{opacity:0; filter:blur(5px); transform:translateY(6px) scale(.99)} to{opacity:1; filter:blur(0); transform:none}}
+@keyframes fade-blur{0%{opacity:0} to{opacity:1}}
 
 ::selection{background:var(--accent-tint)}
 #scroll::-webkit-scrollbar{width:7px} #scroll::-webkit-scrollbar-thumb{background:color-mix(in srgb, var(--ink-3) 45%, transparent); border-radius:4px}
