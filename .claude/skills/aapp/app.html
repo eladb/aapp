@@ -64,7 +64,10 @@
     }
   }
   *{box-sizing:border-box; -webkit-tap-highlight-color:transparent}
-  html{height:100%}
+  /* html paints the page color across the stable layout viewport so the
+     home-indicator / dvh-excluded strip beneath the app in an installed iOS
+     PWA is page-colored, not a bare white band below the composer. */
+  html{height:100%; background-color:hsl(var(--background))}
   body{
     margin:0; color:hsl(var(--foreground));
     background-color:hsl(var(--background));
